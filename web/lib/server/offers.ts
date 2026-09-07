@@ -12,9 +12,7 @@ export async function searchOffers(c:Config,p:Profile):Promise<{jobs:Job[];parti
  await limit(c,'ft-global-search',200,3600);
  const all:Job[]=[];let partial=false;
  for(let page=0;page<3;page++){
-  const q=new URLSearchParams({commune:p.commune,distance:String(p.radius),range:`${page*100}-${page*100+99}`,sort:page===2?'2':'1'});
-  // Stable sort across pages prevents skipping/duplicating records.
-  q.set('sort','1');
+  const q=new URLSearchParams({commune:p.commune,distance:String(p.radius),range:`${page*100}-${page*100+99}`,sort:'1'});
   const r=await ft(c,`offres/search?${q}`);if(r.status===204||r.status===416)break;if(!r.ok)throw new AppError(r.status===429?429:503,'Les offres ne sont pas disponibles pour le moment. Réessaie dans quelques minutes.');
   const data=await r.json() as {resultats?:Record<string,unknown>[]};const rows=data.resultats||[];all.push(...rows.map(normalizeJob).filter((j):j is Job=>j!==null));if(rows.length<100)break;if(page===2)partial=true;
  }
@@ -23,4 +21,4 @@ export async function searchOffers(c:Config,p:Profile):Promise<{jobs:Job[];parti
  const r=await admin(c,'offer_searches?on_conflict=key',{method:'POST',headers:{Prefer:'resolution=merge-duplicates'},body:JSON.stringify({key,jobs,fetched_at:fetchedAt,partial})});await requireOK(r);return {jobs,partial,fetchedAt};
 }
 export async function cachedJob(c:Config,id:string):Promise<Job>{const r=await admin(c,`job_cache?id=eq.${encodeURIComponent(id)}&select=job,checked_at`);await requireOK(r);const rows=await r.json() as {job:Job;checked_at:string}[];if(!rows.length)throw new AppError(404,'Cette offre n’est plus disponible.');return rows[0].job;}
-export async function verifyJob(c:Config,id:string):Promise<Job>{const previous=await cachedJob(c,id);const r=await ft(c,`offres/${encodeURIComponent(id)}`);let job:Job;if(r.status===404||r.status===204)job={...previous,active:false};else{if(!r.ok)throw new AppError(503,'Impossible de vérifier cette annonce pour le moment.');job=normalizeJob(await r.json())||previous;}const save=await admin(c,`job_cache?id=eq.${encodeURIComponent(id)}`,{method:'PATCH',body:JSON.stringify({job,checked_at:new Date().toISOString()})});await requireOK(save);return job;}
+export async function verifyJob(c:Config,id:string):Promise<Job>{let previous:Job|undefined;try{previous=await cachedJob(c,id);}catch(e){if(!(e instanceof AppError)||e.status!==404)throw e;}const r=await ft(c,`offres/${encodeURIComponent(id)}`);let job:Job;if(r.status===404||r.status===204){if(!previous)throw new AppError(410,'Cette annonce n’est plus disponible.');job={...previous,active:false};}else{if(!r.ok)throw new AppError(503,'Impossible de vérifier cette annonce pour le moment.');const normalized=normalizeJob(await r.json());if(!normalized)throw new AppError(503,'Annonce illisible. Réessaie plus tard.');job=normalized;}const save=await admin(c,'job_cache?on_conflict=id',{method:'POST',headers:{Prefer:'resolution=merge-duplicates'},body:JSON.stringify({id,job,checked_at:new Date().toISOString()})});await requireOK(save);return job;}

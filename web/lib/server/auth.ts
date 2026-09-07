@@ -8,7 +8,7 @@ export async function authAction(req:Request,c:Config,action:string,input:unknow
  if(['login','signup','recover'].includes(action)){
   const email=validEmail(v.email);await limit(c,`auth:${action}:${email}`,5,600);
   if(action==='recover'){await authFetch(c,'recover',{email});return json({message:'Si un compte correspond à cette adresse, un e-mail de récupération a été envoyé.'});}
-  const password=action==='signup'?validPassword(v.password):string(v.password,128);
+  const password=validPassword(v.password);
   const r=await authFetch(c,action==='signup'?'signup':'token?grant_type=password',{email,password});
   if(action==='signup'){if(r.status===429)throw new AppError(429,'Réessaie dans quelques minutes.');if(r.status>=500)throw new AppError(503,'L’inscription est momentanément indisponible.');return json({message:'Vérifie tes e-mails pour confirmer ton compte. Si tu as déjà un compte, connecte-toi.'});}
   if(!r.ok)throw new AppError(r.status===429?429:401,'Connexion impossible. Vérifie tes identifiants et la confirmation de ton adresse.');
@@ -26,7 +26,7 @@ export async function authAction(req:Request,c:Config,action:string,input:unknow
   if(v.confirmation!=='SUPPRIMER')throw new AppError(400,'Écris SUPPRIMER pour confirmer.');
   const password=validPassword(v.password);
   const reauth=await authFetch(c,'token?grant_type=password',{email:user.email,password});if(!reauth.ok)throw new AppError(401,'Vérifie ton mot de passe pour confirmer la suppression.');
-  const r=await remote(`${c.SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(user.id)}`,{method:'DELETE',headers:{apikey:c.SUPABASE_SECRET_KEY!,Authorization:`Bearer ${c.SUPABASE_SECRET_KEY}`}});
+  const r=await remote(`${c.SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(user.id)}`,{method:'DELETE',headers:{apikey:c.SUPABASE_SECRET_KEY!,...(c.SUPABASE_SECRET_KEY?.startsWith('eyJ')?{Authorization:`Bearer ${c.SUPABASE_SECRET_KEY}`}:{})}});
   if(!r.ok)throw new AppError(503,'La suppression a échoué. Ton compte est encore présent. Réessaie.');return sessionCookies(json({ok:true}),c);
  }
  throw new AppError(404,'Action inconnue.');

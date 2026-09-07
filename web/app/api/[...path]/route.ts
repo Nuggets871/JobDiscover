@@ -1,3 +1,4 @@
+import { enrich } from '@/lib/server/enrichment';
 import { searchOffers, verifyJob, cachedJob } from '@/lib/server/offers';
 import { config, json, assertOrigin, body, authenticate, db, requireOK, AppError, configured, limit, remote } from '@/lib/server/core';
 import { authAction } from '@/lib/server/auth';
@@ -23,7 +24,7 @@ async function handle(req:Request){try{
   const p=validateProfile(rows[0]?.preferences||defaultProfile);return json(await searchOffers(c,p));
  }
  if(path.startsWith('offers/')&&req.method==='GET'){
-  const id=path.slice(7);if(!/^[a-zA-Z0-9_-]{1,64}$/.test(id))throw new AppError(400,'Offre invalide.');await limit(c,`detail:${u.id}`,30,600);return json(await verifyJob(c,id));
+  const id=path.slice(7);if(!/^[a-zA-Z0-9_-]{1,64}$/.test(id))throw new AppError(400,'Offre invalide.');await limit(c,`detail:${u.id}`,30,600);return json(await enrich(c,await verifyJob(c,id)));
  }
  if(path==='feedback'){
   if(req.method==='GET'){const r=await db(c,'feedback?select=job_id,verdict,reason,job,created_at&order=created_at.desc&limit=1000',u.token);await requireOK(r);return json(await r.json());}

@@ -1,3 +1,4 @@
+import { searchOffers, verifyJob } from '@/lib/server/offers';
 import { config, json, assertOrigin, body, authenticate, db, requireOK, AppError, configured, limit, remote } from '@/lib/server/core';
 import { authAction } from '@/lib/server/auth';
 import { defaultProfile } from '@/lib/model';
@@ -16,6 +17,14 @@ async function handle(req:Request){try{
  const u=await authenticate(req,c);
  if(path==='me'&&req.method==='GET')return json({email:u.email});
  await limit(c,`user:${u.id}`,120,60);
+ if(path==='offers'&&req.method==='GET'){
+  await limit(c,`search:${u.id}`,12,600);
+  const r=await db(c,'profiles?select=preferences',u.token);await requireOK(r);const rows=await r.json() as {preferences:unknown}[];
+  const p=validateProfile(rows[0]?.preferences||defaultProfile);return json(await searchOffers(c,p));
+ }
+ if(path.startsWith('offers/')&&req.method==='GET'){
+  const id=path.slice(7);if(!/^[a-zA-Z0-9_-]{1,64}$/.test(id))throw new AppError(400,'Offre invalide.');await limit(c,`detail:${u.id}`,30,600);return json(await verifyJob(c,id));
+ }
  if(path==='profile'){
   if(req.method==='GET'){const r=await db(c,'profiles?select=preferences',u.token);await requireOK(r);const rows=await r.json() as {preferences:unknown}[];return json(rows.length?rows[0].preferences:defaultProfile);}
   if(req.method==='PUT'){const p=validateProfile(await body(req));const r=await db(c,'profiles?on_conflict=user_id',u.token,{method:'POST',headers:{Prefer:'resolution=merge-duplicates'},body:JSON.stringify({user_id:u.id,preferences:p,updated_at:new Date().toISOString()})});await requireOK(r);return json(p);}

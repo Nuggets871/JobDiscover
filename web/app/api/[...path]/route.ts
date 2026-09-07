@@ -1,8 +1,8 @@
-import { searchOffers, verifyJob } from '@/lib/server/offers';
+import { searchOffers, verifyJob, cachedJob } from '@/lib/server/offers';
 import { config, json, assertOrigin, body, authenticate, db, requireOK, AppError, configured, limit, remote } from '@/lib/server/core';
 import { authAction } from '@/lib/server/auth';
 import { defaultProfile } from '@/lib/model';
-import { validateProfile } from '@/lib/validation';
+import { validateProfile, validateFeedback } from '@/lib/validation';
 export const dynamic='force-dynamic';
 async function handle(req:Request){try{
  const c=await config();const path=new URL(req.url).pathname.replace(/^\/api\//,'');
@@ -24,6 +24,11 @@ async function handle(req:Request){try{
  }
  if(path.startsWith('offers/')&&req.method==='GET'){
   const id=path.slice(7);if(!/^[a-zA-Z0-9_-]{1,64}$/.test(id))throw new AppError(400,'Offre invalide.');await limit(c,`detail:${u.id}`,30,600);return json(await verifyJob(c,id));
+ }
+ if(path==='feedback'){
+  if(req.method==='GET'){const r=await db(c,'feedback?select=job_id,verdict,reason,job,created_at&order=created_at.desc&limit=1000',u.token);await requireOK(r);return json(await r.json());}
+  if(req.method==='POST'){const f=validateFeedback(await body(req));const job=await cachedJob(c,f.job_id);const r=await db(c,'feedback?on_conflict=user_id,job_id',u.token,{method:'POST',headers:{Prefer:'resolution=merge-duplicates'},body:JSON.stringify({...f,user_id:u.id,job,created_at:new Date().toISOString()})});await requireOK(r);return json({...f,job});}
+  if(req.method==='DELETE'){const id=new URL(req.url).searchParams.get('id')||'';if(!/^[a-zA-Z0-9_-]{1,64}$/.test(id))throw new AppError(400,'Offre invalide.');const r=await db(c,`feedback?job_id=eq.${encodeURIComponent(id)}`,u.token,{method:'DELETE'});await requireOK(r);return json({ok:true});}
  }
  if(path==='profile'){
   if(req.method==='GET'){const r=await db(c,'profiles?select=preferences',u.token);await requireOK(r);const rows=await r.json() as {preferences:unknown}[];return json(rows.length?rows[0].preferences:defaultProfile);}

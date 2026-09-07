@@ -1,3 +1,4 @@
+import {exportAccount,maintenance} from '@/lib/server/privacy';
 import { enrich } from '@/lib/server/enrichment';
 import { searchOffers, verifyJob, cachedJob } from '@/lib/server/offers';
 import { config, json, assertOrigin, body, authenticate, db, requireOK, AppError, configured, limit, remote } from '@/lib/server/core';
@@ -7,6 +8,7 @@ import { validateProfile, validateFeedback } from '@/lib/validation';
 export const dynamic='force-dynamic';
 async function handle(req:Request){try{
  const c=await config();const path=new URL(req.url).pathname.replace(/^\/api\//,'');
+ if(path==='maintenance'&&req.method==='POST')return json(await maintenance(req,c));
  if(req.method!=='GET')assertOrigin(req,c);
  if(path==='status'&&req.method==='GET')return json({accounts:configured(c),offers:Boolean(c.FRANCE_TRAVAIL_CLIENT_ID&&c.FRANCE_TRAVAIL_CLIENT_SECRET),ai:Boolean(c.DEEPSEEK_API_KEY)});
  if(path.startsWith('auth/')&&req.method==='POST')return await authAction(req,c,path.slice(5),await body(req));
@@ -16,6 +18,7 @@ async function handle(req:Request){try{
   const r=await remote(`https://geo.api.gouv.fr/communes?codePostal=${postal}&fields=nom,code,centre&format=json`);await requireOK(r);return json(await r.json());
  }
  const u=await authenticate(req,c);
+ if(path==='export'&&req.method==='GET'){await limit(c,`export:${u.id}`,3,3600);return await exportAccount(c,u);}
  if(path==='me'&&req.method==='GET')return json({email:u.email});
  await limit(c,`user:${u.id}`,120,60);
  if(path==='offers'&&req.method==='GET'){

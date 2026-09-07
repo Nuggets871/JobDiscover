@@ -1,5 +1,5 @@
-import { authenticate, authFetch, configured, json, limit, refreshCookie, remote, sessionCookies, AppError, type Config } from './core';
-import { object, string, validEmail, validPassword } from '../validation';
+import { authenticate, authFetch, configured, json, limit, refreshCookie, remote, sessionCookies, AppError, type Config } from './core.ts';
+import { object, string, validEmail, validPassword } from '../validation.ts';
 export async function authAction(req:Request,c:Config,action:string,input:unknown){
  if(!configured(c))throw new AppError(503,'Les comptes ne sont pas encore activés. La démonstration reste accessible.');
  const v=object(input);
@@ -24,6 +24,8 @@ export async function authAction(req:Request,c:Config,action:string,input:unknow
  if(action==='password'){const password=validPassword(v.password);const r=await authFetch(c,'user',{password},user.token,'PUT');if(!r.ok)throw new AppError(400,'Ce mot de passe ne peut pas être utilisé. Choisis-en un autre.');return json({ok:true,message:'Ton mot de passe a été mis à jour.'});}
  if(action==='delete'){
   if(v.confirmation!=='SUPPRIMER')throw new AppError(400,'Écris SUPPRIMER pour confirmer.');
+  const password=validPassword(v.password);
+  const reauth=await authFetch(c,'token?grant_type=password',{email:user.email,password});if(!reauth.ok)throw new AppError(401,'Vérifie ton mot de passe pour confirmer la suppression.');
   const r=await remote(`${c.SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(user.id)}`,{method:'DELETE',headers:{apikey:c.SUPABASE_SECRET_KEY!,Authorization:`Bearer ${c.SUPABASE_SECRET_KEY}`}});
   if(!r.ok)throw new AppError(503,'La suppression a échoué. Ton compte est encore présent. Réessaie.');return sessionCookies(json({ok:true}),c);
  }

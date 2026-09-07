@@ -1,5 +1,5 @@
-import { AppError } from '../validation';
-export { AppError } from '../validation';
+import { AppError } from '../validation.ts';
+export { AppError } from '../validation.ts';
 export type Config=Record<string,string|undefined>;
 export async function config():Promise<Config>{let bindings:Config={};try{const runtime=await import('cloudflare:workers');bindings=runtime.env as unknown as Config;}catch{}return {...process.env,...bindings};}
 export function configured(c:Config){return Boolean(c.SUPABASE_URL&&c.SUPABASE_PUBLISHABLE_KEY&&c.SUPABASE_SECRET_KEY&&c.APP_ORIGIN);}

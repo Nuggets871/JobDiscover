@@ -1,6 +1,6 @@
-import { AppError, admin, remote, requireOK, limit, type Config } from './core';
-import { normalizeJob,deduplicate } from '../jobs';
-import type {Job,Profile} from '../model';
+import { AppError, admin, remote, requireOK, limit, type Config } from './core.ts';
+import { normalizeJob,deduplicate } from '../jobs.ts';
+import type {Job,Profile} from '../model.ts';
 let tokenCache:{token:string;expires:number}|null=null;
 async function token(c:Config){if(tokenCache&&tokenCache.expires>Date.now()+30000)return tokenCache.token;if(!c.FRANCE_TRAVAIL_CLIENT_ID||!c.FRANCE_TRAVAIL_CLIENT_SECRET)throw new AppError(503,'La connexion à France Travail n’est pas encore activée.');const r=await remote('https://entreprise.francetravail.fr/connexion/oauth2/access_token?realm=%2Fpartenaire',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'client_credentials',client_id:c.FRANCE_TRAVAIL_CLIENT_ID,client_secret:c.FRANCE_TRAVAIL_CLIENT_SECRET,scope:'api_offresdemploiv2 o2dsoffre'})});if(!r.ok)throw new AppError(503,'France Travail est momentanément indisponible.');const data=await r.json() as {access_token:string;expires_in:number};tokenCache={token:data.access_token,expires:Date.now()+data.expires_in*1000};return data.access_token;}
 async function ft(c:Config,path:string){const t=await token(c);const r=await remote(`https://api.francetravail.io/partenaire/offresdemploi/v2/${path}`,{headers:{Authorization:`Bearer ${t}`,Accept:'application/json'}});if(r.status===401)tokenCache=null;return r;}

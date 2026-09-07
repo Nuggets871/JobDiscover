@@ -1,6 +1,6 @@
-import type {Job,Interest} from '../model';
-import {interests} from '../model';
-import {admin,remote,requireOK,limit,type Config} from './core';
+import type {Job,Interest} from '../model.ts';
+import {interests} from '../model.ts';
+import {admin,remote,requireOK,limit,type Config} from './core.ts';
 // Only public job duties go to the provider. User profiles, histories and coordinates never do.
 export function redactContacts(text:string){return text.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi,'[contact retiré]').replace(/(?:\+33|0)[\s.()-]*[1-9](?:[\s.()-]*\d{2}){4}/g,'[téléphone retiré]').replace(/https?:\/\/\S+/gi,'[lien retiré]').replace(/(?:contact(?:ez|er)?|monsieur|madame|m\.|mme|recruteur|recruteuse)\s*:?\s+[A-ZÀ-Ü][\p{L}'-]+(?:\s+[A-ZÀ-Ü][\p{L}'-]+){0,2}/gu,'[contact retiré]');}
 export async function enrich(c:Config,job:Job):Promise<Job>{

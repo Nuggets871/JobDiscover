@@ -18,3 +18,8 @@ test-results/
 *.pem
 *.key
 *.p12
+
+*.tsbuildinfo
+
+.idea/
+.vscode/

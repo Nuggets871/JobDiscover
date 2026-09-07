@@ -1,4 +1,4 @@
-import { config, json, assertOrigin, body, authenticate, db, requireOK, AppError, configured, limit } from '@/lib/server/core';
+import { config, json, assertOrigin, body, authenticate, db, requireOK, AppError, configured, limit, remote } from '@/lib/server/core';
 import { authAction } from '@/lib/server/auth';
 import { defaultProfile } from '@/lib/model';
 import { validateProfile } from '@/lib/validation';
@@ -8,6 +8,11 @@ async function handle(req:Request){try{
  if(req.method!=='GET')assertOrigin(req,c);
  if(path==='status'&&req.method==='GET')return json({accounts:configured(c),offers:Boolean(c.FRANCE_TRAVAIL_CLIENT_ID&&c.FRANCE_TRAVAIL_CLIENT_SECRET),ai:Boolean(c.DEEPSEEK_API_KEY)});
  if(path.startsWith('auth/')&&req.method==='POST')return await authAction(req,c,path.slice(5),await body(req));
+ if(path==='communes'&&req.method==='GET'){
+  const postal=new URL(req.url).searchParams.get('postal')||'';if(!/^[0-9]{5}$/.test(postal))throw new AppError(400,'Entre un code postal à 5 chiffres.');
+  if(configured(c))await limit(c,'communes-global',300,60);
+  const r=await remote(`https://geo.api.gouv.fr/communes?codePostal=${postal}&fields=nom,code,centre&format=json`);await requireOK(r);return json(await r.json());
+ }
  const u=await authenticate(req,c);
  if(path==='me'&&req.method==='GET')return json({email:u.email});
  await limit(c,`user:${u.id}`,120,60);

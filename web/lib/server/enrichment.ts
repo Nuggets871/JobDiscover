@@ -89,7 +89,7 @@ export async function enrich(c: Config, job: Job): Promise<Job> {
       c,
       `insert into job_enrichment(hash,summary,tags,created_at) values($1,$2,$3,now())
       on conflict(hash) do nothing`,
-      [hash, result.summary, result.tags],
+      [hash, result.summary, JSON.stringify(result.tags)],
     );
     return { ...job, summary: result.summary, tags: result.tags };
   } catch {

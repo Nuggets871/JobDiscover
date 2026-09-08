@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import pg from 'pg';
 import { authAction } from '../lib/server/auth.ts';
 import { authenticate, type Config } from '../lib/server/core.ts';
+import { handleApiRequest } from '../lib/server/router.ts';
+import { defaultProfile } from '../lib/model.ts';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 
@@ -20,6 +22,7 @@ void test(
     const client = new pg.Client({ connectionString: databaseUrl });
     await client.connect();
     const email = `account-${crypto.randomUUID()}@example.test`;
+    const otherEmail = `account-${crypto.randomUUID()}@example.test`;
     const originalFetch = globalThis.fetch;
     let emailedToken = '';
     globalThis.fetch = (async (
@@ -69,6 +72,66 @@ void test(
         headers: { cookie: cookieHeader },
       });
       assert.equal((await authenticate(sessionRequest, c)).email, email);
+
+      const profile = { ...defaultProfile, city: 'Lyon' };
+      const profileSave = await handleApiRequest(
+        new Request('https://example.test/api/profile', {
+          method: 'PUT',
+          headers: {
+            cookie: cookieHeader,
+            origin: 'https://example.test',
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify(profile),
+        }),
+        c,
+      );
+      assert.equal(profileSave.status, 200);
+      assert.deepEqual(
+        await (
+          await handleApiRequest(
+            new Request('https://example.test/api/profile', {
+              headers: { cookie: cookieHeader },
+            }),
+            c,
+          )
+        ).json(),
+        profile,
+      );
+
+      await authAction(
+        new Request('https://example.test/api/auth/signup'),
+        c,
+        'signup',
+        {
+          email: otherEmail,
+          password: 'phrase secrète autre compte',
+        },
+      );
+      const otherConfirmed = await authAction(
+        new Request('https://example.test/api/auth/confirm'),
+        c,
+        'confirm',
+        {
+          token_hash: emailedToken,
+          type: 'email',
+        },
+      );
+      const otherCookieHeader = otherConfirmed.headers
+        .getSetCookie()
+        .map((cookie) => cookie.split(';', 1)[0])
+        .join('; ');
+      assert.deepEqual(
+        await (
+          await handleApiRequest(
+            new Request('https://example.test/api/profile', {
+              headers: { cookie: otherCookieHeader },
+            }),
+            c,
+          )
+        ).json(),
+        defaultProfile,
+      );
       await assert.rejects(
         authAction(
           new Request('https://example.test/api/auth/confirm'),
@@ -196,6 +259,7 @@ void test(
     } finally {
       globalThis.fetch = originalFetch;
       await client.query('delete from users where email=$1', [email]);
+      await client.query('delete from users where email=$1', [otherEmail]);
       await client.end();
     }
   },

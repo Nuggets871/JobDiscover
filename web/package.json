@@ -9,12 +9,13 @@
     "dev": "vinext dev",
     "build": "vinext build",
     "start": "wrangler dev --config dist/server/wrangler.json",
+    "server": "node --env-file-if-exists=.env.local --experimental-strip-types server/index.ts",
     "lint": "oxlint",
     "format": "oxfmt",
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "test:postgres": "node --experimental-strip-types --test tests/postgres-auth.integration.ts",
-    "db:migrate": "node scripts/migrate.mjs",
+    "db:migrate": "node --env-file-if-exists=.env.local scripts/migrate.mjs",
     "check": "npm run typecheck && npm run lint && npm test && npm run build"
   },
   "dependencies": {

@@ -91,19 +91,22 @@ export async function searchOffers(
   const jobs = deduplicate(all);
   const fetchedAt = new Date().toISOString();
   if (jobs.length) {
-    for (const job of jobs)
-      await query(
-        c,
-        `insert into job_cache(id,job,checked_at) values($1,$2,$3)
-        on conflict(id) do update set job=excluded.job,checked_at=excluded.checked_at`,
-        [job.id, job, fetchedAt],
-      );
+    const cacheRows = JSON.stringify(
+      jobs.map((job) => ({ id: job.id, job, checked_at: fetchedAt })),
+    );
+    await query(
+      c,
+      `insert into job_cache(id,job,checked_at)
+       select id,job,checked_at from jsonb_to_recordset($1::jsonb) as row(id text,job jsonb,checked_at timestamptz)
+       on conflict(id) do update set job=excluded.job,checked_at=excluded.checked_at`,
+      [cacheRows],
+    );
   }
   await query(
     c,
     `insert into offer_searches(key,jobs,fetched_at,partial) values($1,$2,$3,$4)
     on conflict(key) do update set jobs=excluded.jobs,fetched_at=excluded.fetched_at,partial=excluded.partial`,
-    [key, jobs, fetchedAt, partial],
+    [key, JSON.stringify(jobs), fetchedAt, partial],
   );
   return { jobs, partial, fetchedAt };
 }

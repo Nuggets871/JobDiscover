@@ -1,139 +1,92 @@
-import { exportAccount, maintenance } from '@/lib/server/privacy';
-import { enrich } from '@/lib/server/enrichment';
-import { searchOffers, verifyJob, cachedJob } from '@/lib/server/offers';
-import {
-  config,
-  json,
-  assertOrigin,
-  body,
-  authenticate,
-  AppError,
-  configured,
-  limit,
-  remote,
-  requireOK,
-} from '@/lib/server/core';
-import { query } from '@/lib/server/database';
-import { authAction } from '@/lib/server/auth';
-import { defaultProfile } from '@/lib/model';
-import { validateProfile, validateFeedback } from '@/lib/validation';
+import { config, json } from '@/lib/server/core';
+
 export const dynamic = 'force-dynamic';
+
 async function handle(req: Request) {
-  try {
-    const c = await config();
-    const path = new URL(req.url).pathname.replace(/^\/api\//, '');
-    if (path === 'maintenance' && req.method === 'POST')
-      return json(await maintenance(req, c));
-    if (req.method !== 'GET') assertOrigin(req, c);
-    if (path === 'status' && req.method === 'GET')
+  const c = await config();
+  if (
+    !c.BACKEND_URL ||
+    !c.BACKEND_SHARED_SECRET ||
+    c.BACKEND_SHARED_SECRET.length < 32
+  ) {
+    if (req.method === 'GET' && new URL(req.url).pathname === '/api/status')
       return json({
-        accounts: configured(c),
+        accounts: false,
         offers: Boolean(
           c.FRANCE_TRAVAIL_CLIENT_ID && c.FRANCE_TRAVAIL_CLIENT_SECRET,
         ),
-        ai: Boolean(c.DEEPSEEK_API_KEY),
+        ai: false,
       });
-    if (path.startsWith('auth/') && req.method === 'POST')
-      return await authAction(req, c, path.slice(5), await body(req));
-    if (path === 'communes' && req.method === 'GET') {
-      const postal = new URL(req.url).searchParams.get('postal') || '';
-      if (!/^[0-9]{5}$/.test(postal))
-        throw new AppError(400, 'Entre un code postal à 5 chiffres.');
-      if (configured(c)) await limit(c, 'communes-global', 300, 60);
-      const r = await remote(
-        `https://geo.api.gouv.fr/communes?codePostal=${postal}&fields=nom,code,centre&format=json`,
-      );
-      await requireOK(r);
-      return json(await r.json());
-    }
-    const u = await authenticate(req, c);
-    if (path === 'export' && req.method === 'GET') {
-      await limit(c, `export:${u.id}`, 3, 3600);
-      return await exportAccount(c, u);
-    }
-    if (path === 'me' && req.method === 'GET') return json({ email: u.email });
-    await limit(c, `user:${u.id}`, 120, 60);
-    if (path === 'offers' && req.method === 'GET') {
-      await limit(c, `search:${u.id}`, 12, 600);
-      const { rows } = await query<{ preferences: unknown }>(
-        c,
-        'select preferences from profiles where user_id=$1',
-        [u.id],
-      );
-      const p = validateProfile(rows[0]?.preferences || defaultProfile);
-      return json(await searchOffers(c, p));
-    }
-    if (path.startsWith('offers/') && req.method === 'GET') {
-      const id = path.slice(7);
-      if (!/^[a-zA-Z0-9_-]{1,64}$/.test(id))
-        throw new AppError(400, 'Offre invalide.');
-      await limit(c, `detail:${u.id}`, 30, 600);
-      return json(await enrich(c, await verifyJob(c, id)));
-    }
-    if (path === 'feedback') {
-      if (req.method === 'GET') {
-        const { rows } = await query(
-          c,
-          'select job_id,verdict,reason,job,created_at from feedback where user_id=$1 order by created_at desc limit 1000',
-          [u.id],
-        );
-        return json(rows);
-      }
-      if (req.method === 'POST') {
-        const f = validateFeedback(await body(req));
-        const job = await cachedJob(c, f.job_id);
-        await query(
-          c,
-          `insert into feedback(user_id,job_id,verdict,reason,job,created_at) values($1,$2,$3,$4,$5,now())
-          on conflict(user_id,job_id) do update set verdict=excluded.verdict,reason=excluded.reason,job=excluded.job,created_at=excluded.created_at`,
-          [u.id, f.job_id, f.verdict, f.reason, job],
-        );
-        return json({ ...f, job });
-      }
-      if (req.method === 'DELETE') {
-        const id = new URL(req.url).searchParams.get('id') || '';
-        if (!/^[a-zA-Z0-9_-]{1,64}$/.test(id))
-          throw new AppError(400, 'Offre invalide.');
-        await query(c, 'delete from feedback where user_id=$1 and job_id=$2', [
-          u.id,
-          id,
-        ]);
-        return json({ ok: true });
-      }
-    }
-    if (path === 'profile') {
-      if (req.method === 'GET') {
-        const { rows } = await query<{ preferences: unknown }>(
-          c,
-          'select preferences from profiles where user_id=$1',
-          [u.id],
-        );
-        return json(rows.length ? rows[0].preferences : defaultProfile);
-      }
-      if (req.method === 'PUT') {
-        const p = validateProfile(await body(req));
-        await query(
-          c,
-          `insert into profiles(user_id,preferences,updated_at) values($1,$2,now())
-          on conflict(user_id) do update set preferences=excluded.preferences,updated_at=excluded.updated_at`,
-          [u.id, p],
-        );
-        return json(p);
-      }
-    }
-    throw new AppError(404, 'Page introuvable.');
-  } catch (e) {
     return json(
       {
         error:
-          e instanceof AppError
-            ? e.message
-            : 'Une erreur est survenue. Réessaie dans un instant.',
+          'Les comptes ne sont pas encore activés. La démonstration reste accessible.',
       },
-      e instanceof AppError ? e.status : 500,
+      503,
+    );
+  }
+  const backend = new URL(c.BACKEND_URL);
+  const local = ['localhost', '127.0.0.1', '::1'].includes(backend.hostname);
+  if (
+    (backend.protocol !== 'https:' && !local) ||
+    backend.username ||
+    backend.password
+  )
+    return json({ error: 'Le service est mal configuré.' }, 503);
+  const incoming = new URL(req.url);
+  const target = new URL(`${incoming.pathname}${incoming.search}`, backend);
+  const headers = new Headers();
+  for (const name of [
+    'accept',
+    'content-type',
+    'cookie',
+    'origin',
+    'sec-fetch-site',
+    'authorization',
+  ]) {
+    const value = req.headers.get(name);
+    if (value) headers.set(name, value);
+  }
+  headers.set('x-jobdiscover-proxy', c.BACKEND_SHARED_SECRET);
+  try {
+    const response = await fetch(target, {
+      method: req.method,
+      headers,
+      body: ['GET', 'HEAD'].includes(req.method) ? undefined : req.body,
+      redirect: 'manual',
+      signal: AbortSignal.timeout(15_000),
+      // Required for streaming request bodies in Node-compatible runtimes.
+      duplex: 'half',
+    } as RequestInit);
+    const outgoing = new Headers();
+    for (const name of [
+      'cache-control',
+      'content-disposition',
+      'content-type',
+      'referrer-policy',
+      'vary',
+      'x-content-type-options',
+    ]) {
+      const value = response.headers.get(name);
+      if (value) outgoing.set(name, value);
+    }
+    for (const cookie of response.headers.getSetCookie())
+      outgoing.append('set-cookie', cookie);
+    return new Response(response.body, {
+      status: response.status,
+      headers: outgoing,
+    });
+  } catch {
+    return json(
+      {
+        error:
+          'Le service est momentanément indisponible. Réessaie dans un instant.',
+      },
+      503,
     );
   }
 }
+
 export const GET = handle;
 export const POST = handle;
 export const PUT = handle;

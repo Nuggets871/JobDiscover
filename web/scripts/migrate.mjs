@@ -22,15 +22,22 @@ try {
       [name],
     );
     if (applied.rowCount) continue;
-    await client.query(
-      await readFile(
-        new URL(`../postgres/migrations/${name}`, import.meta.url),
-        'utf8',
-      ),
-    );
-    await client.query('insert into schema_migrations(name) values($1)', [
-      name,
-    ]);
+    await client.query('begin');
+    try {
+      await client.query(
+        await readFile(
+          new URL(`../postgres/migrations/${name}`, import.meta.url),
+          'utf8',
+        ),
+      );
+      await client.query('insert into schema_migrations(name) values($1)', [
+        name,
+      ]);
+      await client.query('commit');
+    } catch (error) {
+      await client.query('rollback');
+      throw error;
+    }
     process.stdout.write(`Applied ${name}\n`);
   }
 } finally {

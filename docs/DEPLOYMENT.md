@@ -13,16 +13,27 @@ cd web
 docker compose up -d --wait
 cp .env.example .env.local
 npm run db:migrate
-npm run dev
+npm run server
+# In another terminal, copy BACKEND_URL and BACKEND_SHARED_SECRET to .dev.vars,
+# then run npm run dev.
 ```
 
-For production, provision PostgreSQL in an EU region with encrypted storage, TLS, daily backups and point-in-time recovery. Run migrations from a restricted deployment job, then give the runtime database role only `SELECT`, `INSERT`, `UPDATE`, `DELETE` and permission to execute `consume_rate_limit`. It must not be able to create or drop schemas. Configure:
+For production, deploy `web/server/index.ts` as a private Node.js 22 service behind HTTPS. Only its health endpoint is public; every API route requires `BACKEND_SHARED_SECRET`. Allow PostgreSQL network access only from this service. Provision PostgreSQL in an EU region with encrypted storage, TLS, daily backups and point-in-time recovery. Run migrations from a restricted deployment job, then give the runtime database role only `SELECT`, `INSERT`, `UPDATE`, `DELETE` and permission to execute `consume_rate_limit`. It must not be able to create or drop schemas.
+
+Configure the Sites frontend with:
+
+- `BACKEND_URL`: HTTPS origin of the private Node service.
+- `BACKEND_SHARED_SECRET`: a random secret of at least 32 characters.
+
+Configure the Node service with the same `BACKEND_SHARED_SECRET`, plus:
 
 - `APP_ORIGIN`: exact HTTPS application origin, with no path or trailing slash.
 - `DATABASE_URL`: server-only PostgreSQL connection URL.
 - `DATABASE_SSL`: leave unset in production so certificate verification stays enabled; use `false` only for the local container.
 - `RESEND_API_KEY`: server-only Resend key used for transactional account email.
 - `EMAIL_FROM`: verified sender, for example `JobDiscover <comptes@domain.fr>`.
+- `FRANCE_TRAVAIL_CLIENT_ID` and `FRANCE_TRAVAIL_CLIENT_SECRET`.
+- Optional DeepSeek and maintenance variables described below.
 
 Apply `web/postgres/migrations/*.sql` with `npm run db:migrate`. Keep application and database logs free of passwords, tokens, email links, e-mail addresses and preference payloads. The confirmation page removes its token from the address bar before the user acts. Sessions use host-only `HttpOnly`, `Secure`, `SameSite=Lax` cookies, and all API writes require an exact same-origin request.
 

@@ -1,5 +1,3 @@
-begin;
-
 create extension if not exists pgcrypto;
 create extension if not exists citext;
 
@@ -68,5 +66,3 @@ create table job_cache(id text primary key,job jsonb not null,checked_at timesta
 create index jobs_checked on job_cache(checked_at);
 create table offer_searches(key text primary key,jobs jsonb not null,fetched_at timestamptz not null default now(),partial boolean not null default false);
 create table job_enrichment(hash char(64) primary key,summary text not null,tags jsonb not null,created_at timestamptz not null default now());
-
-commit;

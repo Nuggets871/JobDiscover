@@ -105,15 +105,78 @@ void test(
         .getSetCookie()
         .map((cookie) => cookie.split(';', 1)[0])
         .join('; ');
+
+      await authAction(
+        new Request('https://example.test/api/auth/recover'),
+        c,
+        'recover',
+        { email },
+      );
+      const recovered = await authAction(
+        new Request('https://example.test/api/auth/confirm'),
+        c,
+        'confirm',
+        {
+          token_hash: emailedToken,
+          type: 'recovery',
+        },
+      );
+      const recoveryCookieHeader = recovered.headers
+        .getSetCookie()
+        .map((cookie) => cookie.split(';', 1)[0])
+        .join('; ');
+      await authAction(
+        new Request('https://example.test/api/auth/password', {
+          headers: { cookie: recoveryCookieHeader },
+        }),
+        c,
+        'password',
+        { password: 'deuxième phrase secrète' },
+      );
+      await assert.rejects(
+        authAction(
+          new Request('https://example.test/api/auth/login'),
+          c,
+          'login',
+          {
+            email,
+            password: 'première phrase secrète',
+          },
+        ),
+        /Connexion impossible/,
+      );
+      const loggedIn = await authAction(
+        new Request('https://example.test/api/auth/login'),
+        c,
+        'login',
+        {
+          email,
+          password: 'deuxième phrase secrète',
+        },
+      );
+      const loginCookieHeader = loggedIn.headers
+        .getSetCookie()
+        .map((cookie) => cookie.split(';', 1)[0])
+        .join('; ');
+      await assert.rejects(
+        authenticate(
+          new Request('https://example.test/api/me', {
+            headers: { cookie: refreshedCookieHeader },
+          }),
+          c,
+        ),
+        /expiré/,
+      );
+
       await authAction(
         new Request('https://example.test/api/me', {
-          headers: { cookie: refreshedCookieHeader },
+          headers: { cookie: loginCookieHeader },
         }),
         c,
         'delete',
         {
           confirmation: 'SUPPRIMER',
-          password: 'première phrase secrète',
+          password: 'deuxième phrase secrète',
         },
       );
       assert.equal(

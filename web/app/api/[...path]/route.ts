@@ -7,13 +7,13 @@ import {
   assertOrigin,
   body,
   authenticate,
-  db,
-  requireOK,
   AppError,
   configured,
   limit,
   remote,
+  requireOK,
 } from '@/lib/server/core';
+import { query } from '@/lib/server/database';
 import { authAction } from '@/lib/server/auth';
 import { defaultProfile } from '@/lib/model';
 import { validateProfile, validateFeedback } from '@/lib/validation';
@@ -55,9 +55,11 @@ async function handle(req: Request) {
     await limit(c, `user:${u.id}`, 120, 60);
     if (path === 'offers' && req.method === 'GET') {
       await limit(c, `search:${u.id}`, 12, 600);
-      const r = await db(c, 'profiles?select=preferences', u.token);
-      await requireOK(r);
-      const rows = (await r.json()) as { preferences: unknown }[];
+      const { rows } = await query<{ preferences: unknown }>(
+        c,
+        'select preferences from profiles where user_id=$1',
+        [u.id],
+      );
       const p = validateProfile(rows[0]?.preferences || defaultProfile);
       return json(await searchOffers(c, p));
     }
@@ -70,63 +72,52 @@ async function handle(req: Request) {
     }
     if (path === 'feedback') {
       if (req.method === 'GET') {
-        const r = await db(
+        const { rows } = await query(
           c,
-          'feedback?select=job_id,verdict,reason,job,created_at&order=created_at.desc&limit=1000',
-          u.token,
+          'select job_id,verdict,reason,job,created_at from feedback where user_id=$1 order by created_at desc limit 1000',
+          [u.id],
         );
-        await requireOK(r);
-        return json(await r.json());
+        return json(rows);
       }
       if (req.method === 'POST') {
         const f = validateFeedback(await body(req));
         const job = await cachedJob(c, f.job_id);
-        const r = await db(c, 'feedback?on_conflict=user_id,job_id', u.token, {
-          method: 'POST',
-          headers: { Prefer: 'resolution=merge-duplicates' },
-          body: JSON.stringify({
-            ...f,
-            user_id: u.id,
-            job,
-            created_at: new Date().toISOString(),
-          }),
-        });
-        await requireOK(r);
+        await query(
+          c,
+          `insert into feedback(user_id,job_id,verdict,reason,job,created_at) values($1,$2,$3,$4,$5,now())
+          on conflict(user_id,job_id) do update set verdict=excluded.verdict,reason=excluded.reason,job=excluded.job,created_at=excluded.created_at`,
+          [u.id, f.job_id, f.verdict, f.reason, job],
+        );
         return json({ ...f, job });
       }
       if (req.method === 'DELETE') {
         const id = new URL(req.url).searchParams.get('id') || '';
         if (!/^[a-zA-Z0-9_-]{1,64}$/.test(id))
           throw new AppError(400, 'Offre invalide.');
-        const r = await db(
-          c,
-          `feedback?job_id=eq.${encodeURIComponent(id)}`,
-          u.token,
-          { method: 'DELETE' },
-        );
-        await requireOK(r);
+        await query(c, 'delete from feedback where user_id=$1 and job_id=$2', [
+          u.id,
+          id,
+        ]);
         return json({ ok: true });
       }
     }
     if (path === 'profile') {
       if (req.method === 'GET') {
-        const r = await db(c, 'profiles?select=preferences', u.token);
-        await requireOK(r);
-        const rows = (await r.json()) as { preferences: unknown }[];
+        const { rows } = await query<{ preferences: unknown }>(
+          c,
+          'select preferences from profiles where user_id=$1',
+          [u.id],
+        );
         return json(rows.length ? rows[0].preferences : defaultProfile);
       }
       if (req.method === 'PUT') {
         const p = validateProfile(await body(req));
-        const r = await db(c, 'profiles?on_conflict=user_id', u.token, {
-          method: 'POST',
-          headers: { Prefer: 'resolution=merge-duplicates' },
-          body: JSON.stringify({
-            user_id: u.id,
-            preferences: p,
-            updated_at: new Date().toISOString(),
-          }),
-        });
-        await requireOK(r);
+        await query(
+          c,
+          `insert into profiles(user_id,preferences,updated_at) values($1,$2,now())
+          on conflict(user_id) do update set preferences=excluded.preferences,updated_at=excluded.updated_at`,
+          [u.id, p],
+        );
         return json(p);
       }
     }

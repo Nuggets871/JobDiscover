@@ -11,10 +11,7 @@ export async function config(): Promise<Config> {
 }
 export function configured(c: Config) {
   return Boolean(
-    c.SUPABASE_URL &&
-    c.SUPABASE_PUBLISHABLE_KEY &&
-    c.SUPABASE_SECRET_KEY &&
-    c.APP_ORIGIN,
+    c.DATABASE_URL && c.APP_ORIGIN && c.RESEND_API_KEY && c.EMAIL_FROM,
   );
 }
 export const securityHeaders = {
@@ -86,58 +83,9 @@ export async function remote(url: string, init: RequestInit = {}) {
     );
   }
 }
-export function db(
-  c: Config,
-  path: string,
-  token: string,
-  init: RequestInit = {},
-) {
-  return remote(`${c.SUPABASE_URL}/rest/v1/${path}`, {
-    ...init,
-    headers: {
-      apikey: c.SUPABASE_PUBLISHABLE_KEY!,
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      ...Object.fromEntries(new Headers(init.headers)),
-    },
-  });
-}
-export function admin(c: Config, path: string, init: RequestInit = {}) {
-  return remote(`${c.SUPABASE_URL}/rest/v1/${path}`, {
-    ...init,
-    headers: {
-      apikey: c.SUPABASE_SECRET_KEY!,
-      ...(c.SUPABASE_SECRET_KEY?.startsWith('eyJ')
-        ? { Authorization: `Bearer ${c.SUPABASE_SECRET_KEY}` }
-        : {}),
-      'Content-Type': 'application/json',
-      ...Object.fromEntries(new Headers(init.headers)),
-    },
-  });
-}
-export async function requireOK(r: Response) {
-  if (!r.ok)
-    throw new AppError(
-      503,
-      'Impossible d’enregistrer ou de charger les données pour le moment.',
-    );
-}
-export async function authFetch(
-  c: Config,
-  path: string,
-  data?: unknown,
-  token?: string,
-  method = 'POST',
-) {
-  return remote(`${c.SUPABASE_URL}/auth/v1/${path}`, {
-    method,
-    headers: {
-      apikey: c.SUPABASE_PUBLISHABLE_KEY!,
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    ...(data !== undefined ? { body: JSON.stringify(data) } : {}),
-  });
+export async function requireOK(response: Response) {
+  if (!response.ok)
+    throw new AppError(503, 'Le service est momentanément indisponible.');
 }
 export function readCookie(req: Request, name: string) {
   return (
@@ -189,16 +137,18 @@ export async function authenticate(req: Request, c: Config): Promise<Session> {
   const token = readCookie(req, cookieName(c, 'access'));
   if (!token)
     throw new AppError(401, 'Connecte-toi pour retrouver ton espace.');
-  const r = await authFetch(c, 'user', undefined, token, 'GET');
-  if (!r.ok) throw new AppError(401, 'Ta session a expiré. Reconnecte-toi.');
-  const u = (await r.json()) as {
-    id: string;
-    email: string;
-    email_confirmed_at?: string;
-  };
-  if (!u.id || !u.email_confirmed_at)
-    throw new AppError(401, 'Confirme ton adresse e-mail pour continuer.');
-  return { id: u.id, email: u.email, token };
+  const { tokenHash } = await import('./crypto.ts');
+  const { query } = await import('./database.ts');
+  const hash = await tokenHash(token);
+  const result = await query<{ id: string; email: string }>(
+    c,
+    `select u.id, u.email from auth_sessions s join users u on u.id=s.user_id
+     where s.access_hash=$1 and s.access_expires_at>now() and u.email_verified_at is not null`,
+    [hash],
+  );
+  const user = result.rows[0];
+  if (!user) throw new AppError(401, 'Ta session a expiré. Reconnecte-toi.');
+  return { id: user.id, email: user.email, token };
 }
 export function refreshCookie(req: Request, c: Config) {
   return readCookie(req, cookieName(c, 'refresh'));
@@ -216,16 +166,13 @@ export async function limit(
   )
     .map((x) => x.toString(16).padStart(2, '0'))
     .join('');
-  const r = await admin(c, 'rpc/consume_rate_limit', {
-    method: 'POST',
-    body: JSON.stringify({
-      bucket_key: digest,
-      max_hits: max,
-      window_seconds: seconds,
-    }),
-  });
-  await requireOK(r);
-  if ((await r.json()) !== true)
+  const { query } = await import('./database.ts');
+  const result = await query<{ allowed: boolean }>(
+    c,
+    'select consume_rate_limit($1,$2,$3) as allowed',
+    [digest, max, seconds],
+  );
+  if (result.rows[0]?.allowed !== true)
     throw new AppError(
       429,
       'Un peu trop de tentatives. Réessaie dans quelques minutes.',

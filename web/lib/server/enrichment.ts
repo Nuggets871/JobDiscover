@@ -1,6 +1,7 @@
 import type { Job, Interest } from '../model.ts';
 import { interests } from '../model.ts';
-import { admin, remote, requireOK, limit, type Config } from './core.ts';
+import { remote, limit, type Config } from './core.ts';
+import { query } from './database.ts';
 // Only public job duties go to the provider. User profiles, histories and coordinates never do.
 export function redactContacts(text: string) {
   return text
@@ -34,15 +35,10 @@ export async function enrich(c: Config, job: Job): Promise<Job> {
     .map((n) => n.toString(16).padStart(2, '0'))
     .join('');
   try {
-    const cached = await admin(
-      c,
-      `job_enrichment?hash=eq.${hash}&select=summary,tags`,
-    );
-    await requireOK(cached);
-    const rows = (await cached.json()) as {
+    const { rows } = await query<{
       summary: string;
       tags: Interest[];
-    }[];
+    }>(c, 'select summary,tags from job_enrichment where hash=$1', [hash]);
     if (rows[0]) return { ...job, ...rows[0] };
     await limit(c, 'ai-global-hour', 30, 3600);
     await limit(c, 'ai-global-day', 150, 86400);
@@ -89,17 +85,12 @@ export async function enrich(c: Config, job: Job): Promise<Job> {
       )
     )
       return job;
-    const save = await admin(c, 'job_enrichment?on_conflict=hash', {
-      method: 'POST',
-      headers: { Prefer: 'resolution=ignore-duplicates' },
-      body: JSON.stringify({
-        hash,
-        summary: result.summary,
-        tags: result.tags,
-        created_at: new Date().toISOString(),
-      }),
-    });
-    await requireOK(save);
+    await query(
+      c,
+      `insert into job_enrichment(hash,summary,tags,created_at) values($1,$2,$3,now())
+      on conflict(hash) do nothing`,
+      [hash, result.summary, result.tags],
+    );
     return { ...job, summary: result.summary, tags: result.tags };
   } catch {
     return job;

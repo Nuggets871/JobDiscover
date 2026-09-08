@@ -1,16 +1,16 @@
 import {
-  admin,
-  db,
-  requireOK,
   AppError,
   securityHeaders,
   type Config,
   type Session,
 } from './core.ts';
+import { query } from './database.ts';
 export async function exportAccount(c: Config, u: Session) {
-  const p = await db(c, 'profiles?select=preferences,updated_at', u.token);
-  await requireOK(p);
-  const profiles = await p.json();
+  const { rows: profiles } = await query(
+    c,
+    'select preferences,updated_at from profiles where user_id=$1',
+    [u.id],
+  );
   const enc = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
@@ -27,13 +27,11 @@ export async function exportAccount(c: Config, u: Session) {
         let offset = 0,
           first = true;
         while (true) {
-          const r = await db(
+          const { rows } = await query(
             c,
-            `feedback?select=job_id,verdict,reason,job,created_at&order=job_id&limit=100&offset=${offset}`,
-            u.token,
+            'select job_id,verdict,reason,job,created_at from feedback where user_id=$1 order by job_id limit 100 offset $2',
+            [u.id, offset],
           );
-          await requireOK(r);
-          const rows = (await r.json()) as unknown[];
           for (const row of rows) {
             controller.enqueue(
               enc.encode((first ? '' : ',') + JSON.stringify(row)),
@@ -76,18 +74,13 @@ export async function maintenance(req: Request, c: Config) {
   if (diff) throw new AppError(401, 'Non autorisé.');
   const before = (days: number) =>
     new Date(Date.now() - days * 86400000).toISOString();
-  for (const [table, column, days] of [
-    ['job_cache', 'checked_at', 30],
-    ['offer_searches', 'fetched_at', 1],
-    ['job_enrichment', 'created_at', 90],
-    ['rate_limits', 'expires_at', 1],
-  ] as const) {
-    const r = await admin(
-      c,
-      `${table}?${column}=lt.${encodeURIComponent(before(days))}`,
-      { method: 'DELETE' },
-    );
-    await requireOK(r);
-  }
+  await query(c, 'delete from job_cache where checked_at<$1', [before(30)]);
+  await query(c, 'delete from offer_searches where fetched_at<$1', [before(1)]);
+  await query(c, 'delete from job_enrichment where created_at<$1', [
+    before(90),
+  ]);
+  await query(c, 'delete from rate_limits where expires_at<$1', [before(1)]);
+  await query(c, 'delete from auth_sessions where refresh_expires_at<now()');
+  await query(c, 'delete from auth_tokens where expires_at<now()');
   return { ok: true };
 }

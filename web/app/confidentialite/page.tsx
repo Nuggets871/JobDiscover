@@ -51,11 +51,11 @@ export default function Privacy() {
         <h2>Services utilisés</h2>
         <p>
           Le site est hébergé avec Sites sur Cloudflare. Les comptes et les
-          données, lorsqu’ils sont configurés, utilisent Supabase. France
-          Travail fournit les offres réelles ; l’API géographique publique
-          fournit les communes. DeepSeek est facultatif. La région de stockage
-          et les conditions contractuelles doivent être fixées par l’exploitant
-          avant l’ouverture des inscriptions.
+          données, lorsqu’ils sont configurés, utilisent notre base PostgreSQL.
+          France Travail fournit les offres réelles ; l’API géographique
+          publique fournit les communes. DeepSeek est facultatif. La région de
+          stockage et les conditions contractuelles doivent être fixées par
+          l’exploitant avant l’ouverture des inscriptions.
         </p>
       </section>
       <section>

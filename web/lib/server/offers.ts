@@ -1,11 +1,5 @@
-import {
-  AppError,
-  admin,
-  remote,
-  requireOK,
-  limit,
-  type Config,
-} from './core.ts';
+import { AppError, remote, limit, type Config } from './core.ts';
+import { query } from './database.ts';
 import { normalizeJob, deduplicate } from '../jobs.ts';
 import type { Job, Profile } from '../model.ts';
 let tokenCache: { token: string; expires: number } | null = null;
@@ -58,16 +52,13 @@ export async function searchOffers(
       'Complète ta commune dans ton profil pour voir les offres.',
     );
   const key = `${p.commune}:${p.radius}`;
-  const cache = await admin(
-    c,
-    `offer_searches?key=eq.${encodeURIComponent(key)}&select=jobs,fetched_at,partial`,
-  );
-  await requireOK(cache);
-  const entries = (await cache.json()) as {
+  const { rows: entries } = await query<{
     jobs: Job[];
     fetched_at: string;
     partial: boolean;
-  }[];
+  }>(c, 'select jobs,fetched_at,partial from offer_searches where key=$1', [
+    key,
+  ]);
   if (entries[0] && Date.now() - Date.parse(entries[0].fetched_at) < 15 * 60000)
     return {
       jobs: entries[0].jobs,
@@ -100,30 +91,28 @@ export async function searchOffers(
   const jobs = deduplicate(all);
   const fetchedAt = new Date().toISOString();
   if (jobs.length) {
-    const r = await admin(c, 'job_cache?on_conflict=id', {
-      method: 'POST',
-      headers: { Prefer: 'resolution=merge-duplicates' },
-      body: JSON.stringify(
-        jobs.map((job) => ({ id: job.id, job, checked_at: fetchedAt })),
-      ),
-    });
-    await requireOK(r);
+    for (const job of jobs)
+      await query(
+        c,
+        `insert into job_cache(id,job,checked_at) values($1,$2,$3)
+        on conflict(id) do update set job=excluded.job,checked_at=excluded.checked_at`,
+        [job.id, job, fetchedAt],
+      );
   }
-  const r = await admin(c, 'offer_searches?on_conflict=key', {
-    method: 'POST',
-    headers: { Prefer: 'resolution=merge-duplicates' },
-    body: JSON.stringify({ key, jobs, fetched_at: fetchedAt, partial }),
-  });
-  await requireOK(r);
+  await query(
+    c,
+    `insert into offer_searches(key,jobs,fetched_at,partial) values($1,$2,$3,$4)
+    on conflict(key) do update set jobs=excluded.jobs,fetched_at=excluded.fetched_at,partial=excluded.partial`,
+    [key, jobs, fetchedAt, partial],
+  );
   return { jobs, partial, fetchedAt };
 }
 export async function cachedJob(c: Config, id: string): Promise<Job> {
-  const r = await admin(
+  const { rows } = await query<{ job: Job; checked_at: string }>(
     c,
-    `job_cache?id=eq.${encodeURIComponent(id)}&select=job,checked_at`,
+    'select job,checked_at from job_cache where id=$1',
+    [id],
   );
-  await requireOK(r);
-  const rows = (await r.json()) as { job: Job; checked_at: string }[];
   if (!rows.length)
     throw new AppError(404, 'Cette offre n’est plus disponible.');
   return rows[0].job;
@@ -152,11 +141,11 @@ export async function verifyJob(c: Config, id: string): Promise<Job> {
       throw new AppError(503, 'Annonce illisible. Réessaie plus tard.');
     job = normalized;
   }
-  const save = await admin(c, 'job_cache?on_conflict=id', {
-    method: 'POST',
-    headers: { Prefer: 'resolution=merge-duplicates' },
-    body: JSON.stringify({ id, job, checked_at: new Date().toISOString() }),
-  });
-  await requireOK(save);
+  await query(
+    c,
+    `insert into job_cache(id,job,checked_at) values($1,$2,now())
+    on conflict(id) do update set job=excluded.job,checked_at=excluded.checked_at`,
+    [id, job],
+  );
   return job;
 }

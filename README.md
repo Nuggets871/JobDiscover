@@ -1,36 +1,60 @@
 # JobDiscover
 
-Mobile-first French job discovery. The app lives in `web/`.
+Découverte mobile-first d'offres d'emploi en France. Une app React (Vite) + un backend Express (Node 22) + PostgreSQL.
 
-- Fictional demo: onboarding, explainable recommendations, filters, likes, maybe, rejection reasons, undo and favorites. State is memory-only.
-- Configurable live service: dedicated Node/PostgreSQL backend with built-in auth and row-level enforcement, France Travail offers, optional DeepSeek public-job enrichment, account export and deletion.
-- No private account data or API keys are sent to the model or stored in Git.
+## Structure
 
-## Local development
-
-Node 22.13+ is required.
-
-```sh
-npm --prefix web ci
-cp web/.env.example web/.env.local
-npm --prefix web run dev
+```
+.
+├── backend/               # API Express (Node 22 + PostgreSQL)
+│   ├── src/               # config, routes, services, validation
+│   ├── migrations/        # schéma SQL versionné
+│   ├── scripts/migrate.mjs
+│   └── tests/             # tests unitaires + intégration Postgres
+├── frontend/              # App React (Vite)
+│   └── src/
+│       ├── components/    # discovery, auth, profil, ui
+│       ├── lib/           # modèle, recommandations, api
+│       └── pages/
+├── docker-compose.yml     # PostgreSQL local
+└── Makefile               # commandes utiles
 ```
 
-The application runs without external credentials in clearly labelled demo mode. See [Deployment](docs/DEPLOYMENT.md) to activate real accounts and providers. Do not paste secrets into issues, chat, code, screenshots or commits.
+## Démarrage en local
 
-## Verification
+Prérequis : Node 22.13+, Docker (ou un PostgreSQL local), `make`.
 
 ```sh
-npm --prefix web run check
-node scripts/check-secrets.mjs
+make install        # npm install backend + frontend
+make db             # docker compose up -d --wait (Postgres)
+cp backend/.env.example backend/.env
+make migrate        # applique les migrations
+make dev            # backend (:3100) + frontend (:5173)
 ```
 
-PostgreSQL integration checks are in `web/tests/sql/`. Run the bootstrap only in a disposable empty database, then apply the migrations in order and run `isolation.sql`. It verifies cross-account reads/writes/deletes, anonymous access, privileged RPC access, quota enforcement and deletion cascades. The bootstrap emulates the managed Auth schema; it does not exercise the hosted email provider.
+Ouvre http://localhost:5173. Sans base configurée, l'app fonctionne en mode démo (offres fictives, rien n'est enregistré).
 
-## Git
+## Vérifications
 
-Configure `git config core.hooksPath .githooks` after cloning. Each implementation milestone has its own English subject-only commit. Credentials, personal data, local IDE settings, logs and database dumps are ignored. CI scans tracked content. The original pre-project commit is preserved and may still contain the initial author's identity; review before making this repository public.
+```sh
+make check          # typecheck + tests + build backend et frontend
+```
 
-## Scope
+Le test d'intégration Postgres s'exécute avec `TEST_DATABASE_URL` :
 
-Search retrieves at most 300 recent offers per geographic query and caches that query for 15 minutes. It does not aggregate every French job listing. France Travail partner coverage depends on partner API consent. Missing schedules are treated conservatively when strict constraints apply. No automatic applications, CV upload, advertising trackers or offline private-data cache.
+```sh
+cd backend
+TEST_DATABASE_URL=postgresql://jobdiscover:local-development-only@127.0.0.1:5432/jobdiscover npm run test:postgres
+```
+
+## Fonctionnement
+
+- **Démo** : offres fictives en mémoire, aucune donnée persistée.
+- **Comptes** : email + mot de passe (PBKDF2, 600 000 itérations), un cookie de session HttpOnly de 30 jours. Aucun e-mail n'est envoyé.
+- **Offres réelles** : France Travail (clé partenaire) via `FRANCE_TRAVAIL_CLIENT_ID` / `_SECRET`. Les recherches sont mises en cache 15 min.
+- **Recommandations** : préférences du profil + réactions (j'aime / peut-être / pas pour moi), avec une part de découverte réglable.
+- **Enrichissement DeepSeek (optionnel)** : seulement si `AI_PUBLIC_JOB_ENRICHMENT=true` ; seuls des extraits d'annonces publiques sans contacts sont transmis.
+
+## Déploiement
+
+Voir [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).

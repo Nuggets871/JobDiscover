@@ -2,28 +2,31 @@
 
 The preview is owner-only and runs in demo mode until the external services are configured. Do not open public registration before the checks below are completed. No paid service has been purchased.
 
-## 1. Managed accounts and database
+## 1. PostgreSQL and account service
 
-Create a Supabase project in an appropriate EU region. Apply `web/supabase/migrations/001_private_accounts.sql`, `002_offer_cache.sql`, and `003_job_enrichment.sql` in order using the SQL editor or a migration tool. They contain schema only, never user data. Choose and document a backup plan and retention period, then test restoration in a separate project.
+JobDiscover owns its account system. PostgreSQL stores users, password digests, hashed session tokens, profiles and feedback; no database credential or session token is exposed to browser JavaScript. Passwords use PBKDF2-SHA-256 with a unique random salt and 600,000 iterations. Confirmation and recovery tokens expire after one hour and can be used once. Refresh tokens rotate on every use.
 
-Set the following server-side runtime variables via Sites secrets (and `.env.local` for development):
+For local development:
 
-- `APP_ORIGIN`: exact HTTPS application origin in production, `http://localhost:3000` locally. No trailing slash needed.
-- `SUPABASE_URL`: the HTTPS project URL.
-- `SUPABASE_PUBLISHABLE_KEY`: the project publishable key.
-- `SUPABASE_SECRET_KEY`: the server secret key. A legacy service-role JWT is also supported. Never prefix a privileged variable with `NEXT_PUBLIC_` or `VITE_`.
+```sh
+cd web
+docker compose up -d --wait
+cp .env.example .env.local
+npm run db:migrate
+npm run dev
+```
 
-Auth configuration:
+For production, provision PostgreSQL in an EU region with encrypted storage, TLS, daily backups and point-in-time recovery. Run migrations from a restricted deployment job, then give the runtime database role only `SELECT`, `INSERT`, `UPDATE`, `DELETE` and permission to execute `consume_rate_limit`. It must not be able to create or drop schemas. Configure:
 
-- Enable email/password signup and email confirmation. Enforce passwords of at least 12 characters and compromised-password checks where available.
-- Set Site URL to `APP_ORIGIN`. Configure production SMTP, provider rate limits, allowed callback URLs, session expiry and signup abuse controls before public registration. Test delivery with disposable accounts.
-- Confirmation email link: `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email`.
-- Recovery email link: `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery`.
-- The confirmation page strips the token from the address bar and requires a button press so mail scanners do not consume the link. Auth URLs should be redacted from hosting access logs; disable request URL/body logging for auth endpoints where available.
-- Sessions are stored in host-only HttpOnly cookies, Secure on HTTPS, with SameSite=Lax. API writes require exact Origin matching. Do not enable wildcard CORS.
-- User data operations use the user's verified access token, not the privileged key. RLS protects direct database API access too.
+- `APP_ORIGIN`: exact HTTPS application origin, with no path or trailing slash.
+- `DATABASE_URL`: server-only PostgreSQL connection URL.
+- `DATABASE_SSL`: leave unset in production so certificate verification stays enabled; use `false` only for the local container.
+- `RESEND_API_KEY`: server-only Resend key used for transactional account email.
+- `EMAIL_FROM`: verified sender, for example `JobDiscover <comptes@domain.fr>`.
 
-Real-service acceptance: create two disposable accounts; confirm emails; log in/out; reset a password; save and restore a draft/profile; save, change and undo feedback; export; attempt cross-account access; delete a disposable account. Repeat relevant isolation tests on staging with the actual managed Auth stack. Local SQL tests are not a replacement for this check.
+Apply `web/postgres/migrations/*.sql` with `npm run db:migrate`. Keep application and database logs free of passwords, tokens, email links, e-mail addresses and preference payloads. The confirmation page removes its token from the address bar before the user acts. Sessions use host-only `HttpOnly`, `Secure`, `SameSite=Lax` cookies, and all API writes require an exact same-origin request.
+
+Before opening registration, create two disposable accounts and verify signup, one-use confirmation, login, logout, refresh rotation, recovery, password change, profile/favorite isolation, export and account deletion. Restore a backup into a separate database and document the real retention period.
 
 ## 2. France Travail
 
@@ -41,7 +44,7 @@ The model only receives a title and public-duty excerpt with detectable contacts
 
 Set a random `CRON_SECRET` of at least 32 characters as a runtime secret. The protected POST `/api/maintenance` deletes expired shared caches and quota rows. To enable the checked-in daily GitHub workflow, configure repository variable `MAINTENANCE_ENABLED=true`, variable `APP_ORIGIN` and secret `CRON_SECRET`. An owner-only Sites preview will not accept anonymous cron calls through its access gate; enable a suitable scheduler when the runtime is accessible or configure an approved dispatch path. The workflow is disabled by default. Query freshness works without the cleanup job; retention cleanup requires it.
 
-Publish only the validated Worker build using Sites. Keep the preview private until external integration tests and privacy notice are complete. `.openai/hosting.json` contains only the project identifier and logical bindings, never secrets. The public-account app uses Supabase auth; Sites ChatGPT auth is only an outer access gate for the private preview and is not used as the app account identity.
+Publish only the validated Worker build using Sites. Keep the preview private until external integration tests and privacy notice are complete. `.openai/hosting.json` contains only the project identifier and logical bindings, never secrets. The public-account app uses its PostgreSQL account system; Sites ChatGPT auth is only an outer access gate for the private preview and is not used as the app account identity.
 
 ## 5. Required before public opening
 

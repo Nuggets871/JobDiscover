@@ -13,6 +13,7 @@
     "format": "oxfmt",
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "test:postgres": "node --experimental-strip-types --test tests/postgres-auth.integration.ts",
     "db:migrate": "node scripts/migrate.mjs",
     "check": "npm run typecheck && npm run lint && npm test && npm run build"
   },

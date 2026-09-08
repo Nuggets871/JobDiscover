@@ -17,7 +17,7 @@ jobs:
         working-directory: web
       - run: npm run check
         working-directory: web
-  database-isolation:
+  postgres-authentication:
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -35,13 +35,19 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v4
-      - name: Verify RLS and deletion in disposable PostgreSQL
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - name: Apply migrations and verify the complete account lifecycle
         env:
-          PGPASSWORD: disposable-ci-password
+          DATABASE_URL: postgresql://test_runner:disposable-ci-password@localhost:5432/jobdiscover_test
+          DATABASE_SSL: "false"
+          TEST_DATABASE_URL: postgresql://test_runner:disposable-ci-password@localhost:5432/jobdiscover_test
         run: |
-          psql -h localhost -U test_runner -d jobdiscover_test -v ON_ERROR_STOP=1 \
-            -f web/tests/sql/bootstrap.sql \
-            -f web/supabase/migrations/001_private_accounts.sql \
-            -f web/supabase/migrations/002_offer_cache.sql \
-            -f web/supabase/migrations/003_job_enrichment.sql \
-            -f web/tests/sql/isolation.sql
+          npm run db:migrate
+          npm run test:postgres
+        working-directory: web

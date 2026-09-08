@@ -1,7 +1,93 @@
-import {admin,db,requireOK,AppError,securityHeaders,type Config,type Session} from './core.ts';
-export async function exportAccount(c:Config,u:Session){
- const p=await db(c,'profiles?select=preferences,updated_at',u.token);await requireOK(p);const profiles=await p.json();const enc=new TextEncoder();
- const stream=new ReadableStream({async start(controller){try{controller.enqueue(enc.encode(JSON.stringify({exportedAt:new Date().toISOString(),email:u.email,profiles}).slice(0,-1)+',"feedback":['));let offset=0,first=true;while(true){const r=await db(c,`feedback?select=job_id,verdict,reason,job,created_at&order=job_id&limit=100&offset=${offset}`,u.token);await requireOK(r);const rows=await r.json() as unknown[];for(const row of rows){controller.enqueue(enc.encode((first?'':',')+JSON.stringify(row)));first=false;}if(rows.length<100)break;offset+=100;}controller.enqueue(enc.encode(']}'));controller.close();}catch(e){controller.error(e);}}});
- return new Response(stream,{headers:{...securityHeaders,'Content-Type':'application/json; charset=utf-8','Content-Disposition':'attachment; filename="mes-donnees-jobdiscover.json"'}});
+import {
+  admin,
+  db,
+  requireOK,
+  AppError,
+  securityHeaders,
+  type Config,
+  type Session,
+} from './core.ts';
+export async function exportAccount(c: Config, u: Session) {
+  const p = await db(c, 'profiles?select=preferences,updated_at', u.token);
+  await requireOK(p);
+  const profiles = await p.json();
+  const enc = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      try {
+        controller.enqueue(
+          enc.encode(
+            JSON.stringify({
+              exportedAt: new Date().toISOString(),
+              email: u.email,
+              profiles,
+            }).slice(0, -1) + ',"feedback":[',
+          ),
+        );
+        let offset = 0,
+          first = true;
+        while (true) {
+          const r = await db(
+            c,
+            `feedback?select=job_id,verdict,reason,job,created_at&order=job_id&limit=100&offset=${offset}`,
+            u.token,
+          );
+          await requireOK(r);
+          const rows = (await r.json()) as unknown[];
+          for (const row of rows) {
+            controller.enqueue(
+              enc.encode((first ? '' : ',') + JSON.stringify(row)),
+            );
+            first = false;
+          }
+          if (rows.length < 100) break;
+          offset += 100;
+        }
+        controller.enqueue(enc.encode(']}'));
+        controller.close();
+      } catch (e) {
+        controller.error(e);
+      }
+    },
+  });
+  return new Response(stream, {
+    headers: {
+      ...securityHeaders,
+      'Content-Type': 'application/json; charset=utf-8',
+      'Content-Disposition':
+        'attachment; filename="mes-donnees-jobdiscover.json"',
+    },
+  });
 }
-export async function maintenance(req:Request,c:Config){if(!c.CRON_SECRET||c.CRON_SECRET.length<32)throw new AppError(503,'Maintenance non configurée.');const input=req.headers.get('authorization')||'';const hash=async(x:string)=>new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(x)));const [a,b]=await Promise.all([hash(input),hash(`Bearer ${c.CRON_SECRET}`)]);let diff=0;for(let i=0;i<a.length;i++)diff|=a[i]^b[i];if(diff)throw new AppError(401,'Non autorisé.');const before=(days:number)=>new Date(Date.now()-days*86400000).toISOString();for(const [table,column,days] of [['job_cache','checked_at',30],['offer_searches','fetched_at',1],['job_enrichment','created_at',90],['rate_limits','expires_at',1]] as const){const r=await admin(c,`${table}?${column}=lt.${encodeURIComponent(before(days))}`,{method:'DELETE'});await requireOK(r);}return {ok:true};}
+export async function maintenance(req: Request, c: Config) {
+  if (!c.CRON_SECRET || c.CRON_SECRET.length < 32)
+    throw new AppError(503, 'Maintenance non configurée.');
+  const input = req.headers.get('authorization') || '';
+  const hash = async (x: string) =>
+    new Uint8Array(
+      await crypto.subtle.digest('SHA-256', new TextEncoder().encode(x)),
+    );
+  const [a, b] = await Promise.all([
+    hash(input),
+    hash(`Bearer ${c.CRON_SECRET}`),
+  ]);
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
+  if (diff) throw new AppError(401, 'Non autorisé.');
+  const before = (days: number) =>
+    new Date(Date.now() - days * 86400000).toISOString();
+  for (const [table, column, days] of [
+    ['job_cache', 'checked_at', 30],
+    ['offer_searches', 'fetched_at', 1],
+    ['job_enrichment', 'created_at', 90],
+    ['rate_limits', 'expires_at', 1],
+  ] as const) {
+    const r = await admin(
+      c,
+      `${table}?${column}=lt.${encodeURIComponent(before(days))}`,
+      { method: 'DELETE' },
+    );
+    await requireOK(r);
+  }
+  return { ok: true };
+}

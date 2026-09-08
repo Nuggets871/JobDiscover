@@ -439,7 +439,7 @@ export default function Discovery() {
               <h1>
                 Et si ton prochain
                 <br />
-                travail te <em>surprenait ?</em>
+                travail te <em>surprenait&nbsp;?</em>
               </h1>
               <p>
                 Des pistes à explorer, à ton rythme.

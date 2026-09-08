@@ -111,8 +111,8 @@ export function validEmail(value: unknown) {
   return email;
 }
 export function validPassword(value: unknown) {
-  if (typeof value !== 'string' || value.length < 12 || value.length > 128)
-    throw new AppError(400, 'Choisis un mot de passe de 12 à 128 caractères.');
+  if (typeof value !== 'string' || value.length < 4 || value.length > 128)
+    throw new AppError(400, 'Choisis un mot de passe de 4 à 128 caractères.');
   return value;
 }
 export function safeExternalUrl(value: unknown): string | null {

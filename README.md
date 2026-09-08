@@ -3,7 +3,7 @@
 Mobile-first French job discovery. The app lives in `web/`.
 
 - Fictional demo: onboarding, explainable recommendations, filters, likes, maybe, rejection reasons, undo and favorites. State is memory-only.
-- Configurable live service: Supabase Auth and PostgreSQL RLS, France Travail offers, optional DeepSeek public-job enrichment, account export and deletion.
+- Configurable live service: dedicated Node/PostgreSQL backend with built-in auth and row-level enforcement, France Travail offers, optional DeepSeek public-job enrichment, account export and deletion.
 - No private account data or API keys are sent to the model or stored in Git.
 
 ## Local development

@@ -73,7 +73,7 @@ export default function Confirm() {
               name="password"
               type="password"
               autoComplete="new-password"
-              minLength={12}
+              minLength={4}
               maxLength={128}
               required
             />

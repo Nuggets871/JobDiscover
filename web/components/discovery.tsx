@@ -1158,7 +1158,7 @@ export default function Discovery() {
           <button
             className="primary-button danger-button"
             disabled={
-              busy || deleteText !== 'SUPPRIMER' || deletePassword.length < 12
+              busy || deleteText !== 'SUPPRIMER' || deletePassword.length < 4
             }
             onClick={deleteAccount}
           >

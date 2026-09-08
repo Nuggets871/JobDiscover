@@ -30,7 +30,7 @@ Configure the Node service with the same `BACKEND_SHARED_SECRET`, plus:
 - `APP_ORIGIN`: exact HTTPS application origin, with no path or trailing slash.
 - `DATABASE_URL`: server-only PostgreSQL connection URL.
 - `DATABASE_SSL`: leave unset in production so certificate verification stays enabled; use `false` only for the local container.
-- `RESEND_API_KEY`: server-only Resend key used for transactional account email.
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`: transactional SMTP credentials (for example Mailjet) used for account confirmation and recovery email.
 - `EMAIL_FROM`: verified sender, for example `JobDiscover <comptes@domain.fr>`.
 - `FRANCE_TRAVAIL_CLIENT_ID` and `FRANCE_TRAVAIL_CLIENT_SECRET`.
 - Optional DeepSeek and maintenance variables described below.

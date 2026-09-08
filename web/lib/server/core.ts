@@ -11,7 +11,13 @@ export async function config(): Promise<Config> {
 }
 export function configured(c: Config) {
   return Boolean(
-    c.DATABASE_URL && c.APP_ORIGIN && c.RESEND_API_KEY && c.EMAIL_FROM,
+    c.DATABASE_URL &&
+      c.APP_ORIGIN &&
+      c.SMTP_HOST &&
+      c.SMTP_PORT &&
+      c.SMTP_USER &&
+      c.SMTP_PASS &&
+      c.EMAIL_FROM,
   );
 }
 export const securityHeaders = {

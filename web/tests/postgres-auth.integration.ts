@@ -5,6 +5,7 @@ import { authAction } from '../lib/server/auth.ts';
 import { authenticate, type Config } from '../lib/server/core.ts';
 import { handleApiRequest } from '../lib/server/router.ts';
 import { defaultProfile } from '../lib/model.ts';
+import { __setEmailCapture } from '../lib/server/email.ts';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 
@@ -25,15 +26,10 @@ void test(
     const otherEmail = `account-${crypto.randomUUID()}@example.test`;
     const originalFetch = globalThis.fetch;
     let emailedToken = '';
-    globalThis.fetch = (async (
-      _input: RequestInfo | URL,
-      init?: RequestInit,
-    ) => {
-      const payload = JSON.parse(init?.body as string);
-      const match = String(payload.text).match(/token_hash=([a-zA-Z0-9_-]+)/);
-      emailedToken = match?.[1] || '';
-      return Response.json({ id: 'email-fixture' });
-    }) as typeof fetch;
+    __setEmailCapture((link) => {
+      const u = new URL(link);
+      emailedToken = u.searchParams.get('token_hash') || '';
+    });
     try {
       await authAction(
         new Request('https://example.test/api/auth/signup'),
@@ -257,6 +253,7 @@ void test(
         0,
       );
     } finally {
+      __setEmailCapture(null);
       globalThis.fetch = originalFetch;
       await client.query('delete from users where email=$1', [email]);
       await client.query('delete from users where email=$1', [otherEmail]);

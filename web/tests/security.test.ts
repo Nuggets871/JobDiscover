@@ -144,7 +144,7 @@ void test('external links reject executable and credential-bearing URLs', () => 
     safeExternalUrl('https://example.com/job'),
     'https://example.com/job',
   );
-  assert.throws(() => validPassword('short'));
+  assert.throws(() => validPassword('abc'));
 });
 void test('provider normalization never invents missing salary, schedules or coordinates', () => {
   const raw = {

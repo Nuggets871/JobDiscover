@@ -84,13 +84,11 @@ export function AuthPanel({
                     mode === 'signup' ? 'new-password' : 'current-password'
                   }
                   required
-                  minLength={mode === 'signup' ? 12 : 1}
+                  minLength={mode === 'signup' ? 4 : 1}
                   maxLength={128}
                 />
                 {mode === 'signup' && (
-                  <small>
-                    12 caractères minimum. Une phrase fait très bien l’affaire.
-                  </small>
+                  <small>4 caractères minimum.</small>
                 )}
               </label>
             )}

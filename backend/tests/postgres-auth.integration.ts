@@ -13,8 +13,14 @@ void test(
     process.env.DATABASE_URL = databaseUrl;
     process.env.DATABASE_SSL = 'false';
     process.env.APP_ORIGIN = 'https://example.test';
+    process.env.AUTH_EMAIL_MODE = 'console';
 
     const { createApp } = await import('../src/app.ts');
+    const { __setEmailCapture } = await import('../src/services/email.ts');
+    let emailUrl = '';
+    __setEmailCapture((url) => {
+      emailUrl = url;
+    });
     const server = createApp().listen(0, '127.0.0.1');
     await new Promise<void>((resolve) => server.once('listening', resolve));
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -22,7 +28,8 @@ void test(
     const client = new pg.Client({ connectionString: databaseUrl });
     await client.connect();
     const email = `account-${crypto.randomUUID()}@example.test`;
-    const cookieHeader = (r: Response) => r.headers.get('set-cookie')!.split(';', 1)[0];
+    const cookieHeader = (r: Response) =>
+      r.headers.get('set-cookie')!.split(';', 1)[0];
 
     const post = (path: string, body: unknown, cookie = '') =>
       fetch(`${base}${path}`, {
@@ -42,7 +49,14 @@ void test(
         password: 'une phrase secrète',
       });
       assert.equal(signup.status, 200);
-      const cookie = cookieHeader(signup);
+      assert.equal((await get('/api/me')).status, 401);
+      const confirmation = new URL(emailUrl);
+      const confirmed = await post('/api/auth/confirm', {
+        token: confirmation.searchParams.get('token'),
+        type: confirmation.searchParams.get('type'),
+      });
+      assert.equal(confirmed.status, 200);
+      const cookie = cookieHeader(confirmed);
       assert.match(cookie, /^jd_session=/);
 
       assert.equal((await get('/api/me', cookie)).status, 200);
@@ -55,11 +69,20 @@ void test(
         body: JSON.stringify(profile),
       });
       assert.equal(profilePut.status, 200);
-      assert.deepEqual(await (await get('/api/profile', cookie)).json(), profile);
+      assert.deepEqual(
+        await (await get('/api/profile', cookie)).json(),
+        profile,
+      );
 
       await client.query(
         `insert into job_cache(id,job,checked_at) values('offre-test', $1::jsonb, now())`,
-        [JSON.stringify({ id: 'offre-test', title: 'Accueil', description: 'Accueillir le public' })],
+        [
+          JSON.stringify({
+            id: 'offre-test',
+            title: 'Accueil',
+            description: 'Accueillir le public',
+          }),
+        ],
       );
       const feedback = await post(
         '/api/feedback',
@@ -86,11 +109,56 @@ void test(
         password: 'une phrase secrète',
       });
       assert.equal(login.status, 200);
-      const loginCookie = cookieHeader(login);
+
+      const recovery = await post('/api/auth/recover', { email });
+      assert.equal(recovery.status, 200);
+      const recoveryUrl = new URL(emailUrl);
+      const recoveryConfirmation = await post('/api/auth/confirm', {
+        token: recoveryUrl.searchParams.get('token'),
+        type: recoveryUrl.searchParams.get('type'),
+      });
+      assert.equal(recoveryConfirmation.status, 200);
+      const recoveryCookie = cookieHeader(recoveryConfirmation);
+      assert.equal(
+        (
+          await post('/api/auth/confirm', {
+            token: recoveryUrl.searchParams.get('token'),
+            type: recoveryUrl.searchParams.get('type'),
+          })
+        ).status,
+        400,
+      );
+      assert.equal(
+        (
+          await post(
+            '/api/auth/password',
+            {
+              password: 'une nouvelle phrase secrète',
+            },
+            recoveryCookie,
+          )
+        ).status,
+        200,
+      );
+      assert.equal(
+        (
+          await post('/api/auth/login', {
+            email,
+            password: 'une phrase secrète',
+          })
+        ).status,
+        401,
+      );
+      const newLogin = await post('/api/auth/login', {
+        email,
+        password: 'une nouvelle phrase secrète',
+      });
+      assert.equal(newLogin.status, 200);
+      const loginCookie = cookieHeader(newLogin);
 
       const deleteAccount = await post(
         '/api/auth/delete',
-        { confirmation: 'SUPPRIMER', password: 'une phrase secrète' },
+        { confirmation: 'SUPPRIMER', password: 'une nouvelle phrase secrète' },
         loginCookie,
       );
       assert.equal(deleteAccount.status, 200);
@@ -100,13 +168,16 @@ void test(
         0,
       );
       assert.equal(
-        (await client.query(
-          'select 1 from auth_sessions s join users u on u.id=s.user_id where u.email=$1',
-          [email],
-        )).rowCount,
+        (
+          await client.query(
+            'select 1 from auth_sessions s join users u on u.id=s.user_id where u.email=$1',
+            [email],
+          )
+        ).rowCount,
         0,
       );
     } finally {
+      __setEmailCapture(null);
       server.close();
       await client.query('delete from users where email=$1', [email]);
       await client.end();

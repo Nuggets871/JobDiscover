@@ -57,7 +57,7 @@ void test('external links reject executable and credential-bearing URLs', () => 
     safeExternalUrl('https://example.com/job'),
     'https://example.com/job',
   );
-  assert.throws(() => validPassword('abc'));
+  assert.throws(() => validPassword('trop court'));
 });
 
 void test('provider normalization never invents missing salary, schedules or coordinates', () => {

@@ -66,7 +66,10 @@ export function validateProfile(value: unknown): Profile {
     p[k] = [...new Set(v[k] as Profile['interests'])];
   }
   if (p.interests.some((x) => p.avoid.includes(x)))
-    throw new AppError(400, 'Une activité ne peut pas être souhaitée et exclue.');
+    throw new AppError(
+      400,
+      'Une activité ne peut pas être souhaitée et exclue.',
+    );
   if (
     !Array.isArray(v.contracts) ||
     v.contracts.length > 5 ||
@@ -115,8 +118,8 @@ export function validEmail(value: unknown) {
 }
 
 export function validPassword(value: unknown) {
-  if (typeof value !== 'string' || value.length < 4 || value.length > 128)
-    throw new AppError(400, 'Choisis un mot de passe de 4 à 128 caractères.');
+  if (typeof value !== 'string' || value.length < 12 || value.length > 128)
+    throw new AppError(400, 'Choisis un mot de passe de 12 à 128 caractères.');
   return value;
 }
 

@@ -40,5 +40,6 @@ export async function maintenance(authorization: string) {
   await query('delete from job_enrichment where created_at<$1', [before(90)]);
   await query('delete from rate_limits where expires_at<$1', [before(1)]);
   await query('delete from auth_sessions where expires_at<now()');
+  await query('delete from auth_tokens where expires_at<now()');
   return { ok: true };
 }

@@ -1,7 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { passwordHash, randomToken, tokenHash, verifyPassword } from '../src/crypto.ts';
-import { sessionCookie, clearCookie, COOKIE_NAME } from '../src/services/auth.ts';
+import {
+  passwordHash,
+  randomToken,
+  tokenHash,
+  verifyPassword,
+} from '../src/crypto.ts';
+import {
+  sessionCookie,
+  clearCookie,
+  COOKIE_NAME,
+} from '../src/services/auth.ts';
+import { emailConfigured } from '../src/services/email.ts';
 
 void test('password hashes use a unique salt and verify the complete password', async () => {
   const password = ' une longue phrase secrète ';
@@ -12,6 +22,21 @@ void test('password hashes use a unique salt and verify the complete password', 
   assert.equal(await verifyPassword(password, first), true);
   assert.equal(await verifyPassword(password.trim(), first), false);
   assert.equal(await verifyPassword('mauvaise phrase secrète', first), false);
+});
+
+void test('console email delivery is limited to non-production environments', () => {
+  const mode = process.env.AUTH_EMAIL_MODE;
+  const environment = process.env.NODE_ENV;
+  try {
+    process.env.AUTH_EMAIL_MODE = 'console';
+    process.env.NODE_ENV = 'development';
+    assert.equal(emailConfigured(), true);
+    process.env.NODE_ENV = 'production';
+    assert.equal(emailConfigured(), false);
+  } finally {
+    process.env.AUTH_EMAIL_MODE = mode;
+    process.env.NODE_ENV = environment;
+  }
 });
 
 void test('session tokens are random and only their digest is stable', async () => {

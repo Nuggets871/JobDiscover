@@ -9,6 +9,13 @@ const client = new pg.Client({
 });
 await client.connect();
 try {
+  if (process.argv.includes('--reset')) {
+    if (process.env.ALLOW_DATABASE_RESET !== 'true') {
+      throw new Error('Refusing reset without ALLOW_DATABASE_RESET=true');
+    }
+    await client.query('drop schema public cascade; create schema public');
+    process.stdout.write('Database schema reset\n');
+  }
   await client.query(
     'create table if not exists schema_migrations(name text primary key,applied_at timestamptz not null default now())',
   );

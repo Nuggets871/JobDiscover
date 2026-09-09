@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
+import type { PoolClient } from 'pg';
 import { config } from '../config.ts';
 import { query } from '../db.ts';
 import { randomToken, tokenHash } from '../crypto.ts';
@@ -21,9 +22,10 @@ export function clearCookie() {
   return `${COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
 }
 
-export async function createSession(userId: string) {
+export async function createSession(userId: string, client?: PoolClient) {
   const token = randomToken();
-  await query(
+  const run = client ? client.query.bind(client) : query;
+  await run(
     'insert into auth_sessions(user_id,token_hash,expires_at) values($1,$2,now()+make_interval(days=>$3))',
     [userId, await tokenHash(token), config().SESSION_DAYS],
   );
@@ -48,7 +50,7 @@ export async function requireAuth(
       throw new AppError(401, 'Connecte-toi pour retrouver ton espace.');
     const result = await query<{ id: string; email: string }>(
       `select u.id, u.email from auth_sessions s join users u on u.id=s.user_id
-       where s.token_hash=$1 and s.expires_at>now()`,
+       where s.token_hash=$1 and s.expires_at>now() and u.email_verified_at is not null`,
       [await tokenHash(token)],
     );
     const user = result.rows[0];

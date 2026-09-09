@@ -5,6 +5,7 @@ create table users (
   id uuid primary key default gen_random_uuid(),
   email citext not null unique check (length(email::text) between 3 and 254),
   password_hash text not null check (length(password_hash) between 80 and 180),
+  email_verified_at timestamptz,
   password_changed_at timestamptz not null default now(),
   created_at timestamptz not null default now()
 );
@@ -18,6 +19,17 @@ create table auth_sessions (
 );
 create index auth_sessions_by_user on auth_sessions(user_id);
 create index auth_sessions_expiry on auth_sessions(expires_at);
+
+create table auth_tokens (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users(id) on delete cascade,
+  purpose text not null check (purpose in ('email','recovery')),
+  token_hash char(64) not null unique,
+  expires_at timestamptz not null,
+  created_at timestamptz not null default now(),
+  unique(user_id,purpose)
+);
+create index auth_tokens_expiry on auth_tokens(expires_at);
 
 create table profiles (
   user_id uuid primary key references users(id) on delete cascade,

@@ -9,20 +9,26 @@ export function AuthPanel({
   enabled: boolean;
   onSuccess: () => Promise<void>;
 }) {
-  const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const [mode, setMode] = useState<'login' | 'signup' | 'recover'>('login');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
   async function submit(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
     setBusy(true);
     setError('');
+    setMessage('');
     const data = new FormData(e.currentTarget);
     try {
-      await api(`auth/${mode}`, 'POST', {
+      const result = await api<{ message?: string }>(`auth/${mode}`, 'POST', {
         email: data.get('email'),
-        password: data.get('password'),
+        ...(mode === 'recover' ? {} : { password: data.get('password') }),
       });
-      await onSuccess();
+      if (mode === 'login') await onSuccess();
+      else
+        setMessage(
+          result.message || 'Consulte ta boîte e-mail pour continuer.',
+        );
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -46,6 +52,7 @@ export function AuthPanel({
             onValueChange={(v) => {
               setMode(String(v) as 'login' | 'signup');
               setError('');
+              setMessage('');
             }}
           >
             <TabsList className="auth-tabs">
@@ -65,20 +72,22 @@ export function AuthPanel({
                 placeholder="toi@exemple.fr"
               />
             </label>
-            <label>
-              Mot de passe
-              <input
-                name="password"
-                type="password"
-                autoComplete={
-                  mode === 'signup' ? 'new-password' : 'current-password'
-                }
-                required
-                minLength={mode === 'signup' ? 4 : 1}
-                maxLength={128}
-              />
-              {mode === 'signup' && <small>4 caractères minimum.</small>}
-            </label>
+            {mode !== 'recover' && (
+              <label>
+                Mot de passe
+                <input
+                  name="password"
+                  type="password"
+                  autoComplete={
+                    mode === 'signup' ? 'new-password' : 'current-password'
+                  }
+                  required
+                  minLength={mode === 'signup' ? 12 : 1}
+                  maxLength={128}
+                />
+                {mode === 'signup' && <small>12 caractères minimum.</small>}
+              </label>
+            )}
             {mode === 'signup' && (
               <p className="form-help">
                 En créant ton compte, tu prends connaissance de notre{' '}
@@ -93,14 +102,47 @@ export function AuthPanel({
                 {error}
               </p>
             )}
+            {message && (
+              <p role="status" className="notice">
+                {message}
+              </p>
+            )}
             <button className="primary-button" disabled={busy}>
               {busy
                 ? 'Un instant…'
-                : mode === 'login'
-                  ? 'Me connecter'
-                  : 'Créer mon compte'}
+                : mode === 'recover'
+                  ? 'Envoyer le lien'
+                  : mode === 'login'
+                    ? 'Me connecter'
+                    : 'Créer mon compte'}
               <ArrowRight size={18} />
             </button>
+            {mode === 'login' && (
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => {
+                  setMode('recover');
+                  setError('');
+                  setMessage('');
+                }}
+              >
+                Mot de passe oublié ?
+              </button>
+            )}
+            {mode === 'recover' && (
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => {
+                  setMode('login');
+                  setError('');
+                  setMessage('');
+                }}
+              >
+                Revenir à la connexion
+              </button>
+            )}
           </form>
         </>
       )}

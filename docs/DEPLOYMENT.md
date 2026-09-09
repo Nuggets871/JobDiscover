@@ -36,6 +36,8 @@ Variables importantes :
 - `DATABASE_SSL=false` : à ne désactiver qu'en local.
 - `APP_ORIGIN` : origine publique du frontend (ex. `https://jobdiscover.example.fr`). Active le flag `Secure` sur le cookie de session en HTTPS.
 - `SESSION_DAYS` : durée de session (défaut 30).
+- `AUTH_EMAIL_MODE=smtp` : obligatoire en production.
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM` : envoi des liens de confirmation et de récupération.
 - `FRANCE_TRAVAIL_CLIENT_ID` / `_SECRET` : activent les offres réelles.
 - `DEEPSEEK_API_KEY` : enrichissement optionnel (reste désactivé tant que `AI_PUBLIC_JOB_ENRICHMENT` n'est pas `true`).
 - `CRON_SECRET` : protège `POST /api/maintenance` (purge des caches expirés).
@@ -53,6 +55,10 @@ En développement, Vite fait déjà ce proxy (`frontend/vite.config.ts`).
 
 4. **Reverse proxy** : sert `frontend/dist/`, proxifie `/api` vers `127.0.0.1:3100`, HTTPS avec les en-têtes de sécurité usuels (`X-Content-Type-Options`, `Referrer-Policy`, etc.).
 
+Le backend ajoute aussi les protections de base (`no-store`, `nosniff`, politique
+de référent, permissions et contrôle d'origine). Le proxy doit ajouter HSTS en
+HTTPS et une CSP adaptée aux fichiers Vite générés.
+
 ## Maintenance
 
 `POST /api/maintenance` avec `Authorization: Bearer <CRON_SECRET>` purge les caches et sessions expirées. À programmer quotidiennement (cron).
@@ -62,3 +68,4 @@ En développement, Vite fait déjà ce proxy (`frontend/vite.config.ts`).
 - Ne pas exposer PostgreSQL publiquement ; autoriser uniquement le serveur.
 - Limiter les tentatives de connexion (le backend rate-limite déjà par adresse).
 - Sauvegarder PostgreSQL régulièrement et tester une restauration.
+- Ne jamais utiliser `AUTH_EMAIL_MODE=console` ni `make db-reset` en production.

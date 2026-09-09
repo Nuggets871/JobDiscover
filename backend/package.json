@@ -4,26 +4,32 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
     "build": "tsc -p tsconfig.build.json",
-    "start": "node dist/index.js",
+    "start": "node --env-file-if-exists=.env dist/index.js",
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "test:postgres": "node --experimental-strip-types --test tests/postgres-auth.integration.ts",
     "db:migrate": "node --env-file-if-exists=.env scripts/migrate.mjs",
+    "db:reset": "node --env-file-if-exists=.env scripts/migrate.mjs --reset",
     "check": "npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
     "cookie-parser": "^1.4.7",
     "express": "^4.21.2",
+    "nodemailer": "^10.0.1",
     "pg": "^8.16.3"
   },
   "devDependencies": {
     "@types/cookie-parser": "^1.4.8",
     "@types/express": "^4.17.21",
     "@types/node": "^22.13.0",
+    "@types/nodemailer": "^7.0.1",
     "@types/pg": "^8.15.5",
     "tsx": "^4.19.2",
     "typescript": "5.9.3"
+  },
+  "overrides": {
+    "qs": "^6.16.0"
   }
 }

@@ -3,6 +3,7 @@ import { remote, requireOK } from '../services/http.ts';
 import { AppError } from '../validation.ts';
 import { requireAuth, type AuthUser } from '../services/auth.ts';
 import { h } from '../handler.ts';
+import { emailConfigured } from '../services/email.ts';
 
 export const miscRouter = Router();
 
@@ -21,7 +22,7 @@ miscRouter.get(
   '/status',
   h(async (_req, res) => {
     res.json({
-      accounts: Boolean(process.env.DATABASE_URL),
+      accounts: Boolean(process.env.DATABASE_URL) && emailConfigured(),
       offers: Boolean(
         process.env.FRANCE_TRAVAIL_CLIENT_ID &&
           process.env.FRANCE_TRAVAIL_CLIENT_SECRET,

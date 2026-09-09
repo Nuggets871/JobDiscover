@@ -32,6 +32,15 @@ make migrate        # applique les migrations
 make dev            # backend (:3100) + frontend (:5173)
 ```
 
+`make frontend` et `make backend` permettent aussi de lancer les deux services
+séparément. `make help` affiche toutes les commandes.
+
+Pour repartir d'une base locale entièrement vide :
+
+```sh
+make db-reset       # destructif : efface toutes les données PostgreSQL locales
+```
+
 Ouvre http://localhost:5173. Sans base configurée, l'app fonctionne en mode démo (offres fictives, rien n'est enregistré).
 
 ## Vérifications
@@ -50,7 +59,8 @@ TEST_DATABASE_URL=postgresql://jobdiscover:local-development-only@127.0.0.1:5432
 ## Fonctionnement
 
 - **Démo** : offres fictives en mémoire, aucune donnée persistée.
-- **Comptes** : email + mot de passe (PBKDF2, 600 000 itérations), un cookie de session HttpOnly de 30 jours. Aucun e-mail n'est envoyé.
+- **Comptes** : e-mail vérifié + mot de passe (PBKDF2, 600 000 itérations), récupération par lien à usage unique et cookie de session HttpOnly.
+- **E-mails locaux** : avec `AUTH_EMAIL_MODE=console`, les liens de confirmation sont affichés dans le terminal du backend. Ce mode est refusé en production.
 - **Offres réelles** : France Travail (clé partenaire) via `FRANCE_TRAVAIL_CLIENT_ID` / `_SECRET`. Les recherches sont mises en cache 15 min.
 - **Recommandations** : préférences du profil + réactions (j'aime / peut-être / pas pour moi), avec une part de découverte réglable.
 - **Enrichissement DeepSeek (optionnel)** : seulement si `AI_PUBLIC_JOB_ENRICHMENT=true` ; seuls des extraits d'annonces publiques sans contacts sont transmis.

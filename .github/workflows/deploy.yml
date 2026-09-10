@@ -1,0 +1,44 @@
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Déploiement sur le VPS
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_DEPLOY_KEY: ${{ secrets.VPS_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$VPS_DEPLOY_KEY" > ~/.ssh/vps_deploy
+          chmod 600 ~/.ssh/vps_deploy
+          ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 -i ~/.ssh/vps_deploy "$VPS_USER@$VPS_HOST" 'set -e; cd /home/deploy/apps/jobdiscover && git fetch origin && git checkout -f main && git reset --hard origin/main && docker compose up -d --build --remove-orphans && docker image prune -f'
+
+      - name: Vérification de la santé
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_DEPLOY_KEY: ${{ secrets.VPS_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$VPS_DEPLOY_KEY" > ~/.ssh/vps_deploy
+          chmod 600 ~/.ssh/vps_deploy
+          for i in $(seq 1 12); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 https://jobs.christopher-bondier.com/api/health || true)
+            echo "health check #$i -> $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 10
+          done
+          echo "Le service ne répond pas après 2 minutes" >&2
+          exit 1

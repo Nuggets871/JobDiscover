@@ -1,7 +1,11 @@
 import {
   defaultProfile,
+  domainPreferences,
+  educationLevels,
   interests,
   rejectionReasons,
+  type DomainPreference,
+  type Education,
   type Profile,
 } from './model.ts';
 
@@ -86,6 +90,15 @@ export function validateProfile(value: unknown): Profile {
   if (!['any', 'beginner'].includes(v.experience as string))
     throw new AppError(400, 'Expérience invalide.');
   p.experience = v.experience as Profile['experience'];
+  p.education = (v.education as Education) ?? defaultProfile.education;
+  if (!educationLevels.includes(p.education))
+    throw new AppError(400, 'Niveau d’étude invalide.');
+  p.domain = string(typeof v.domain === 'string' ? v.domain : '', 80);
+  p.domainPreference =
+    (v.domainPreference as DomainPreference) ?? defaultProfile.domainPreference;
+  if (!domainPreferences.includes(p.domainPreference))
+    throw new AppError(400, 'Préférence de domaine invalide.');
+  p.desires = string(typeof v.desires === 'string' ? v.desires : '', 2000);
   if (p.completed && (!p.commune || p.lat === null || p.lon === null))
     throw new AppError(
       400,

@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import {
   defaultProfile,
+  educationLabels,
   interests,
   kindLabels,
   rejectionReasons,
@@ -440,6 +441,13 @@ export default function Discovery() {
                 </button>
                 {profile.noWeekend && <span>Sans week-end</span>}
                 {profile.noNight && <span>Sans nuit</span>}
+                {profile.domain && profile.domainPreference !== 'any' && (
+                  <span>
+                    {profile.domainPreference === 'avoid'
+                      ? `Sans : ${profile.domain}`
+                      : `Domaine : ${profile.domain}`}
+                  </span>
+                )}
               </div>
               {sourceError ? (
                 <div className="empty-state">
@@ -790,6 +798,18 @@ export default function Discovery() {
                     {profile.contracts.length
                       ? profile.contracts.join(', ')
                       : 'Tous les contrats'}
+                  </p>
+                  <p>
+                    {profile.education !== 'unspecified'
+                      ? educationLabels[profile.education]
+                      : 'Niveau d’étude non précisé'}
+                    {profile.domain
+                      ? ` · ${
+                          profile.domainPreference === 'avoid'
+                            ? 'Sans'
+                            : 'Domaine'
+                        } ${profile.domain}`
+                      : ''}
                   </p>
                   <div className="choices">
                     {profile.interests.map((t) => (

@@ -3,11 +3,24 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
+  Heart,
   LocateFixed,
   LoaderCircle,
   MapPin,
+  Sparkles,
+  X,
 } from 'lucide-react';
-import { interests, type Profile, type Interest } from '@/lib/model';
+import {
+  activityExamples,
+  domainPreferenceLabels,
+  educationLabels,
+  interests,
+  type DesireAnalysis,
+  type DomainPreference,
+  type Education,
+  type Profile,
+  type Interest,
+} from '@/lib/model';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Slider } from '@/components/ui/slider';
 import { Progress } from '@/components/ui/progress';
@@ -36,6 +49,11 @@ export function ProfileEditor({
   const [searching, setSearching] = useState(false);
   const [locating, setLocating] = useState(false);
   const [error, setError] = useState('');
+  const [desireText, setDesireText] = useState(initial.desires);
+  const [desireAnalyzing, setDesireAnalyzing] = useState(false);
+  const [desireError, setDesireError] = useState('');
+  const [desireResult, setDesireResult] = useState<DesireAnalysis | null>(null);
+  const [activityQuery, setActivityQuery] = useState('');
   const requestId = useRef(0);
   const skipPostalLookup = useRef(false);
   function toggle(key: 'interests' | 'avoid', value: Interest) {
@@ -163,6 +181,24 @@ export function ProfileEditor({
       return true;
     }
     return false;
+  }
+  const filteredActivities = activityExamples.filter(
+    (a) =>
+      !activityQuery.trim() ||
+      `${a.label} ${a.hint}`
+        .toLowerCase()
+        .includes(activityQuery.trim().toLowerCase()),
+  );
+  async function analyzeDesire() {
+    setDesireError('');
+    setDesireAnalyzing(true);
+    try {
+      setDesireResult(await api<DesireAnalysis>('profile/desires', 'POST', { text: desireText }));
+    } catch (cause) {
+      setDesireError((cause as Error).message);
+    } finally {
+      setDesireAnalyzing(false);
+    }
   }
   return (
     <div className="profile-editor">
@@ -446,6 +482,203 @@ export function ProfileEditor({
             Ces préférences orientent les propositions. Tu peux toujours les
             changer.
           </p>
+          <div className="desires-section">
+            <div className="field-title-row">
+              <span className="field-title">
+                Ou décris ce que tu aimerais faire
+              </span>
+              <small>Facultatif</small>
+            </div>
+            <p className="form-help">
+              En quelques mots, sans réfléchir. L’IA t’aide à faire ressortir
+              tes envies, tes domaines et ce que tu préfères éviter.
+            </p>
+            <textarea
+              value={desireText}
+              onChange={(event) => {
+                const value = event.target.value.slice(0, 2000);
+                setDesireText(value);
+                setP({ ...p, desires: value });
+              }}
+              rows={4}
+              maxLength={2000}
+              placeholder="Ex. : j’aime être au contact des gens, bricoler et créer des choses, mais je ne veux pas travailler de nuit ni faire de la vente…"
+            />
+            <button
+              type="button"
+              className="secondary-button desires-analyze"
+              disabled={desireAnalyzing || desireText.trim().length < 10}
+              onClick={() => void analyzeDesire()}
+            >
+              {desireAnalyzing ? (
+                <LoaderCircle className="spin" size={17} />
+              ) : (
+                <Sparkles size={17} />
+              )}
+              {desireAnalyzing ? 'Analyse en cours…' : 'Analyser mes envies'}
+            </button>
+            {desireError && (
+              <p className="error-message" role="alert">
+                {desireError}
+              </p>
+            )}
+            {desireResult && (
+              <div className="desire-result">
+                {desireResult.summary && (
+                  <p className="desire-summary">{desireResult.summary}</p>
+                )}
+                {desireResult.interests.length > 0 && (
+                  <>
+                    <div className="field-title-row">
+                      <span className="field-title">Tes envies principales</span>
+                      <small>Touche pour choisir</small>
+                    </div>
+                    <div className="choices">
+                      {desireResult.interests.map((key) => (
+                        <button
+                          type="button"
+                          key={key}
+                          aria-pressed={p.interests.includes(key)}
+                          className={
+                            p.interests.includes(key)
+                              ? 'choice selected'
+                              : 'choice'
+                          }
+                          onClick={() => toggle('interests', key)}
+                        >
+                          {interests[key]}
+                          {p.interests.includes(key) && <Check size={14} />}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+                {desireResult.avoids.length > 0 && (
+                  <>
+                    <div className="field-title-row">
+                      <span className="field-title">À éviter pour toi</span>
+                      <small>Touche pour choisir</small>
+                    </div>
+                    <div className="choices">
+                      {desireResult.avoids.map((key) => (
+                        <button
+                          type="button"
+                          key={key}
+                          aria-pressed={p.avoid.includes(key)}
+                          className={
+                            p.avoid.includes(key)
+                              ? 'choice selected'
+                              : 'choice'
+                          }
+                          onClick={() => toggle('avoid', key)}
+                        >
+                          {interests[key]}
+                          {p.avoid.includes(key) && <Check size={14} />}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+                {desireResult.domains.length > 0 && (
+                  <>
+                    <div className="field-title-row">
+                      <span className="field-title">Des pistes de domaine</span>
+                      <small>Touche pour en retenir une</small>
+                    </div>
+                    <div className="choices">
+                      {desireResult.domains.map((domain) => (
+                        <button
+                          type="button"
+                          key={domain}
+                          aria-pressed={p.domain === domain}
+                          className={
+                            p.domain === domain
+                              ? 'choice selected'
+                              : 'choice'
+                          }
+                          onClick={() =>
+                            setP({
+                              ...p,
+                              domain,
+                              domainPreference:
+                                p.domainPreference === 'any'
+                                  ? 'related'
+                                  : p.domainPreference,
+                            })
+                          }
+                        >
+                          {domain}
+                          {p.domain === domain && <Check size={14} />}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+                <p className="form-help">
+                  Ces suggestions restent sous ton contrôle : ignore-les,
+                  ajuste-les, et change-les plus tard.
+                </p>
+              </div>
+            )}
+          </div>
+          <div className="activities-section">
+            <div className="field-title-row">
+              <span className="field-title">Explorer des exemples</span>
+              <small>{filteredActivities.length} activités</small>
+            </div>
+            <p className="form-help">
+              Parcours des activités concrètes et marque celles qui te plaisent
+              ou celles à éviter.
+            </p>
+            <input
+              className="activities-search"
+              value={activityQuery}
+              onChange={(event) => setActivityQuery(event.target.value)}
+              placeholder="Rechercher une activité…"
+              aria-label="Rechercher une activité"
+            />
+            <div className="activity-list">
+              {filteredActivities.map((activity) => {
+                const liked = p.interests.includes(activity.tag);
+                const avoided = p.avoid.includes(activity.tag);
+                return (
+                  <div className="activity-item" key={activity.label}>
+                    <span className="activity-info">
+                      <strong>{activity.label}</strong>
+                      <small>{activity.hint}</small>
+                    </span>
+                    <button
+                      type="button"
+                      className={liked ? 'activity-like active' : 'activity-like'}
+                      aria-pressed={liked}
+                      aria-label={`J’aimerais ${activity.label}`}
+                      title="J’aimerais faire ça"
+                      onClick={() => toggle('interests', activity.tag)}
+                    >
+                      <Heart size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      className={
+                        avoided ? 'activity-avoid active' : 'activity-avoid'
+                      }
+                      aria-pressed={avoided}
+                      aria-label={`Éviter ${activity.label}`}
+                      title="Je veux éviter ça"
+                      onClick={() => toggle('avoid', activity.tag)}
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                );
+              })}
+              {filteredActivities.length === 0 && (
+                <p className="form-help">
+                  Aucune activité ne correspond à ta recherche.
+                </p>
+              )}
+            </div>
+          </div>
         </div>
       )}
       {step === 2 && (
@@ -519,6 +752,62 @@ export function ProfileEditor({
             Des métiers voisins et inattendus, en respectant toujours tes
             contraintes.
           </p>
+          <div className="parcours-section">
+            <div className="field-title-row">
+              <span className="field-title">Mon parcours</span>
+              <small>Facultatif</small>
+            </div>
+            <label>
+              Niveau d’étude
+              <select
+                value={p.education}
+                onChange={(event) =>
+                  setP({ ...p, education: event.target.value as Education })
+                }
+              >
+                {Object.entries(educationLabels).map(([key, label]) => (
+                  <option key={key} value={key}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Mon domaine ou ma filière
+              <input
+                value={p.domain}
+                onChange={(event) =>
+                  setP({ ...p, domain: event.target.value.slice(0, 80) })
+                }
+                maxLength={80}
+                placeholder="ex. : santé, informatique, commerce, bâtiment…"
+              />
+            </label>
+            <p className="form-help">
+              Comment veux-tu que les offres tiennent compte de ce domaine ?
+            </p>
+            <div className="choices">
+              {Object.entries(domainPreferenceLabels).map(([key, label]) => (
+                <button
+                  type="button"
+                  key={key}
+                  aria-pressed={p.domainPreference === key}
+                  className={
+                    p.domainPreference === key ? 'choice selected' : 'choice'
+                  }
+                  onClick={() =>
+                    setP({
+                      ...p,
+                      domainPreference: key as DomainPreference,
+                    })
+                  }
+                >
+                  {label}
+                  {p.domainPreference === key && <Check size={14} />}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="profile-summary" aria-label="Résumé de tes choix">
             <span>
               <strong>{p.city || 'Commune à choisir'}</strong>

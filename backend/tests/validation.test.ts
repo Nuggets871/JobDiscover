@@ -25,8 +25,26 @@ void test('profile validator drops injected ownership and rejects invalid constr
     { noNight: 'false' },
     { completed: true },
     { interests: ['aider'], avoid: ['aider'] },
+    { education: 'doctorat' },
+    { domainPreference: 'always' },
+    { domain: 'x'.repeat(100) },
+    { desires: 'x'.repeat(3000) },
   ])
     assert.throws(() => validateProfile({ ...defaultProfile, ...patch }));
+});
+
+void test('profile validator keeps the new parcours fields', () => {
+  const p = validateProfile({
+    ...defaultProfile,
+    education: 'bac3',
+    domain: 'santé et social',
+    domainPreference: 'related',
+    desires: "j'aimerais aider les gens dans le soin",
+  });
+  assert.equal(p.education, 'bac3');
+  assert.equal(p.domain, 'santé et social');
+  assert.equal(p.domainPreference, 'related');
+  assert.equal(p.desires, "j'aimerais aider les gens dans le soin");
 });
 
 void test('login accepts the seeded username and legacy passwords', () => {

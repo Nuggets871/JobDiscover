@@ -9,6 +9,18 @@ export const interests = {
   vendre: 'Conseiller & vendre',
 } as const;
 export type Interest = keyof typeof interests;
+export const educationLevels = [
+  'unspecified',
+  'none',
+  'cap',
+  'bac',
+  'bac2',
+  'bac3',
+  'bac5',
+] as const;
+export type Education = (typeof educationLevels)[number];
+export const domainPreferences = ['related', 'avoid', 'any'] as const;
+export type DomainPreference = (typeof domainPreferences)[number];
 export type Profile = {
   city: string;
   commune: string;
@@ -23,6 +35,10 @@ export type Profile = {
   training: boolean;
   experience: 'any' | 'beginner';
   discovery: number;
+  education: Education;
+  domain: string;
+  domainPreference: DomainPreference;
+  desires: string;
   completed: boolean;
 };
 export const defaultProfile: Profile = {
@@ -39,6 +55,10 @@ export const defaultProfile: Profile = {
   training: true,
   experience: 'any',
   discovery: 40,
+  education: 'unspecified',
+  domain: '',
+  domainPreference: 'any',
+  desires: '',
   completed: false,
 };
 export type Job = {

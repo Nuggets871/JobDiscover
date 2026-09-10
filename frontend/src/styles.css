@@ -964,6 +964,110 @@ input:not([type='checkbox']) {
   color: var(--muted);
   font-size: 11px;
 }
+.profile-editor textarea,
+.profile-editor select {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 12px 14px;
+  min-height: 48px;
+  border: 1px solid #ccc3bf;
+  background: #fff;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 16px;
+  margin-top: 8px;
+}
+.profile-editor textarea {
+  min-height: 112px;
+  line-height: 1.6;
+  resize: vertical;
+}
+.desires-section,
+.activities-section,
+.parcours-section {
+  border-top: 1px solid var(--line);
+  padding-top: 22px;
+  margin-top: 6px;
+}
+.desires-analyze {
+  margin-top: 12px;
+  align-self: flex-start;
+}
+.desire-result {
+  border: 1px solid #e2d4dd;
+  background: #faf6f8;
+  border-radius: 10px;
+  padding: 16px;
+  margin-top: 14px;
+  display: grid;
+  gap: 14px;
+}
+.desire-summary {
+  font-family: Georgia, serif;
+  font-size: 17px;
+  line-height: 1.55;
+  color: #5a4151;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.activities-search {
+  margin: 4px 0 12px;
+}
+.activity-list {
+  display: grid;
+  gap: 8px;
+}
+.activity-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+  padding: 10px 12px;
+}
+.activity-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.4;
+}
+.activity-info strong {
+  font-size: 14px;
+}
+.activity-info small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.activity-like,
+.activity-avoid {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid #ddd5d0;
+  background: #fff;
+  display: grid;
+  place-items: center;
+  color: #8b817c;
+  flex-shrink: 0;
+}
+.activity-like.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.activity-avoid.active {
+  background: #9a2938;
+  border-color: #9a2938;
+  color: #fff;
+}
+.parcours-section .choices {
+  margin-top: 4px;
+}
 .input-action {
   position: relative;
   display: flex;

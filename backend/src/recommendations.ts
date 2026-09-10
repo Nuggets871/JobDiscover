@@ -22,12 +22,32 @@ export function distanceKm(
   return 6371 * 2 * Math.asin(Math.min(1, Math.sqrt(x)));
 }
 
+function domainTokens(domain: string) {
+  return domain
+    .toLowerCase()
+    .split(/[^a-z0-9à-öø-ÿœ-]+/i)
+    .filter((word) => word.length > 2);
+}
+
+export function matchesDomain(job: Job, domain: string) {
+  const tokens = domainTokens(domain);
+  if (!tokens.length) return false;
+  const hay = `${job.sector} ${job.title} ${job.summary}`.toLowerCase();
+  return tokens.some((token) => hay.includes(token));
+}
+
 export function eligible(job: Job, p: Profile) {
   if (!job.active) return false;
   if (p.contracts.length && !p.contracts.includes(job.contract)) return false;
   if (p.noNight && job.night !== false) return false;
   if (p.noWeekend && job.weekend !== false) return false;
   if (p.experience === 'beginner' && job.experienceRequired) return false;
+  if (
+    p.domainPreference === 'avoid' &&
+    p.domain &&
+    matchesDomain(job, p.domain)
+  )
+    return false;
   if (p.lat !== null && p.lon !== null) {
     if (
       job.lat === null ||
@@ -120,6 +140,11 @@ export function recommend(
           'Un métier différent de tes envies actuelles, pour laisser une place à la découverte.';
       const score =
         direct.length * 3 +
+        (p.domainPreference === 'related' &&
+        p.domain &&
+        matchesDomain(job, p.domain)
+          ? 2
+          : 0) +
         job.tags.reduce(
           (n, t) => n + (weights[t] || 0) - (p.avoid.includes(t) ? 4 : 0),
           0,

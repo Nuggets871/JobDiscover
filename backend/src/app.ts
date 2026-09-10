@@ -3,6 +3,7 @@ import express, {
   type Request,
   type Response,
 } from 'express';
+import path from 'node:path';
 import cookieParser from 'cookie-parser';
 import { AppError } from './validation.ts';
 import { authRouter } from './routes/auth.routes.ts';
@@ -50,6 +51,28 @@ export function createApp() {
   app.use('/api/feedback', feedbackRouter);
   app.use('/api/offers', offersRouter);
   app.use('/api', privacyRouter);
+
+  const publicDir = process.env.PUBLIC_DIR;
+  if (publicDir) {
+    app.use(
+      express.static(publicDir, {
+        setHeaders(res, filePath) {
+          if (filePath.includes(`${path.sep}assets${path.sep}`))
+            res.setHeader(
+              'Cache-Control',
+              'public, max-age=31536000, immutable',
+            );
+        },
+      }),
+    );
+    app.use((req, res, next) => {
+      if (req.method === 'GET' && !req.path.startsWith('/api/')) {
+        res.sendFile('index.html', { root: publicDir });
+        return;
+      }
+      next();
+    });
+  }
 
   app.use((_req, res) => {
     res.status(404).json({ error: 'Page introuvable.' });

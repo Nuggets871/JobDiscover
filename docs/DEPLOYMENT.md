@@ -63,6 +63,12 @@ HTTPS et une CSP adaptée aux fichiers Vite générés.
 
 `POST /api/maintenance` avec `Authorization: Bearer <CRON_SECRET>` purge les caches et sessions expirées. À programmer quotidiennement (cron).
 
+Les recherches France Travail utilisent un cache mémoire de 15 minutes devant
+le cache PostgreSQL persistant. Les détails d’annonces sont gardés 5 minutes,
+le référentiel complet des codes postaux et communes 7 jours, et les recherches
+par géolocalisation 24 heures en mémoire. Ces caches sont bornés pour éviter une
+croissance continue du processus Node.
+
 ## Recommandations de sécurité
 
 - Ne pas exposer PostgreSQL publiquement ; autoriser uniquement le serveur.

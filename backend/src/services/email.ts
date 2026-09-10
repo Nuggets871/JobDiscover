@@ -2,7 +2,7 @@ import nodemailer, { type Transporter } from 'nodemailer';
 import { config } from '../config.ts';
 import { AppError } from '../validation.ts';
 
-export type AuthPurpose = 'email' | 'recovery';
+export type AuthPurpose = 'email' | 'recovery' | 'login';
 export type EmailCapture = (url: string, to: string) => void;
 
 let capture: EmailCapture | null = null;
@@ -65,17 +65,21 @@ export async function sendAuthEmail(
   const smtp = smtpTransport();
   if (!smtp)
     throw new AppError(503, 'L’envoi des e-mails n’est pas configuré.');
-  const recovery = purpose === 'recovery';
-  const action = recovery
-    ? 'Réinitialise ton mot de passe'
-    : 'Confirme ton adresse e-mail';
+  const subject = {
+    login: 'Connecte-toi à ton compte JobDiscover',
+    email: 'Confirme ton compte JobDiscover',
+    recovery: 'Réinitialise ton mot de passe JobDiscover',
+  }[purpose];
+  const action = {
+    login: 'Connecte-toi à ton compte',
+    email: 'Confirme ton adresse e-mail',
+    recovery: 'Réinitialise ton mot de passe',
+  }[purpose];
   try {
     await smtp.transporter.sendMail({
       from: smtp.from,
       to: email,
-      subject: recovery
-        ? 'Réinitialise ton mot de passe JobDiscover'
-        : 'Confirme ton compte JobDiscover',
+      subject,
       text: `${action} en ouvrant ce lien :\n\n${url}\n\nCe lien expire dans une heure.`,
       html: `<p>${action} :</p><p><a href="${url}">Continuer sur JobDiscover</a></p><p>Ce lien expire dans une heure.</p>`,
     });

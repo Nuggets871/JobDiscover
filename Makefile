@@ -1,4 +1,4 @@
-.PHONY: help install db db-stop db-reset migrate dev backend frontend check test-integration build clean
+.PHONY: help install db db-stop db-reset seed migrate dev backend frontend check test-integration build clean
 
 help:
 	@echo "make install          Installe le frontend et le backend"
@@ -7,6 +7,7 @@ help:
 	@echo "make backend          Lance seulement Express (:3100)"
 	@echo "make db               Lance PostgreSQL local"
 	@echo "make db-reset         EFFACE et recrée la base locale"
+	@echo "make seed             Crée le compte local ggez / ggez"
 	@echo "make check            Typecheck, tests et builds"
 
 install:
@@ -25,6 +26,9 @@ db-stop:
 db-reset:
 	docker compose up -d --wait
 	cd backend && DATABASE_URL=postgresql://jobdiscover:local-development-only@127.0.0.1:54329/jobdiscover DATABASE_SSL=false ALLOW_DATABASE_RESET=true npm run db:reset
+
+seed:
+	cd backend && DATABASE_URL=postgresql://jobdiscover:local-development-only@127.0.0.1:54329/jobdiscover DATABASE_SSL=false ALLOW_DEV_SEED=true npm run db:seed
 
 dev:
 	(cd backend && npm run dev) & (cd frontend && npm run dev) & wait

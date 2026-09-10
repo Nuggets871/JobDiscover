@@ -1,19 +1,75 @@
 services:
-  postgres:
-    image: postgres:18-alpine
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: jobdiscover_app
+    restart: unless-stopped
     environment:
-      POSTGRES_DB: jobdiscover
-      POSTGRES_USER: jobdiscover
-      POSTGRES_PASSWORD: local-development-only
-    ports:
-      - '127.0.0.1:54329:5432'
-    volumes:
-      - jobdiscover_postgres:/var/lib/postgresql
+      NODE_ENV: production
+      PORT: 3000
+      PUBLIC_DIR: /app/frontend/dist
+      DATABASE_URL: postgresql://${POSTGRES_USER:-jd_user}:${POSTGRES_PASSWORD:-jd_password}@postgres:5432/${POSTGRES_DB:-jobdiscover}
+      DATABASE_SSL: "false"
+      APP_ORIGIN: https://jobs.christopher-bondier.com
+      SESSION_DAYS: ${SESSION_DAYS:-30}
+      AUTH_EMAIL_MODE: smtp
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      EMAIL_FROM: ${EMAIL_FROM}
+      FRANCE_TRAVAIL_CLIENT_ID: ${FRANCE_TRAVAIL_CLIENT_ID}
+      FRANCE_TRAVAIL_CLIENT_SECRET: ${FRANCE_TRAVAIL_CLIENT_SECRET}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      AI_PUBLIC_JOB_ENRICHMENT: ${AI_PUBLIC_JOB_ENRICHMENT:-false}
+      CRON_SECRET: ${CRON_SECRET}
+    networks:
+      - internal
+      - web
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U jobdiscover -d jobdiscover']
-      interval: 2s
-      timeout: 3s
-      retries: 15
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 25s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=web"
+      - "traefik.http.routers.jobdiscover.rule=Host(`jobs.christopher-bondier.com`)"
+      - "traefik.http.routers.jobdiscover.entrypoints=websecure"
+      - "traefik.http.routers.jobdiscover.tls=true"
+      - "traefik.http.routers.jobdiscover.tls.certresolver=letsencrypt"
+      - "traefik.http.services.jobdiscover.loadbalancer.server.port=3000"
+
+  postgres:
+    image: postgres:16
+    container_name: jobdiscover_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-jd_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-jd_password}
+      POSTGRES_DB: ${POSTGRES_DB:-jobdiscover}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-jd_user} -d ${POSTGRES_DB:-jobdiscover}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
 volumes:
-  jobdiscover_postgres:
+  pgdata:
+
+networks:
+  internal:
+    driver: bridge
+  web:
+    external: true

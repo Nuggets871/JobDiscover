@@ -60,7 +60,6 @@ export type Job = {
   url: string | null;
   updatedAt: string;
   active: boolean;
-  demo?: boolean;
 };
 export type Reaction = {
   job_id: string;

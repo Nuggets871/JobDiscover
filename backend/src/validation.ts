@@ -117,6 +117,18 @@ export function validEmail(value: unknown) {
   return email;
 }
 
+export function validLogin(value: unknown) {
+  const login = string(value, 254).toLowerCase();
+  if (/^[a-z0-9_-]{3,32}$/.test(login)) return login;
+  return validEmail(login);
+}
+
+export function validLoginPassword(value: unknown) {
+  if (typeof value !== 'string' || value.length < 1 || value.length > 128)
+    throw new AppError(400, 'Vérifie ton mot de passe.');
+  return value;
+}
+
 export function validPassword(value: unknown) {
   if (typeof value !== 'string' || value.length < 12 || value.length > 128)
     throw new AppError(400, 'Choisis un mot de passe de 12 à 128 caractères.');

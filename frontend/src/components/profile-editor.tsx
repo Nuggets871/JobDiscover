@@ -1,5 +1,12 @@
-import { useState } from 'react';
-import { ArrowLeft, ArrowRight, Check, MapPin, Search } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  LocateFixed,
+  LoaderCircle,
+  MapPin,
+} from 'lucide-react';
 import { interests, type Profile, type Interest } from '@/lib/model';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Slider } from '@/components/ui/slider';
@@ -9,23 +16,28 @@ type Commune = {
   nom: string;
   code: string;
   centre: { coordinates: [number, number] };
+  codesPostaux?: string[];
+  codePostal?: string;
 };
+type CommuneResult = { communes: Commune[]; total: number };
 export function ProfileEditor({
   initial,
   onSave,
-  demo = false,
 }: {
   initial: Profile;
   onSave: (p: Profile) => Promise<void>;
-  demo?: boolean;
 }) {
   const [p, setP] = useState<Profile>(initial);
   const [step, setStep] = useState(initial.completed ? 1 : 0);
   const [postal, setPostal] = useState('');
   const [cities, setCities] = useState<Commune[]>([]);
+  const [cityTotal, setCityTotal] = useState(0);
   const [busy, setBusy] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [locating, setLocating] = useState(false);
   const [error, setError] = useState('');
+  const requestId = useRef(0);
+  const skipPostalLookup = useRef(false);
   function toggle(key: 'interests' | 'avoid', value: Interest) {
     setP((prev) => ({
       ...prev,
@@ -37,21 +49,97 @@ export function ProfileEditor({
       ].filter((x) => x !== value),
     }));
   }
-  async function search(e: React.SyntheticEvent) {
-    e.preventDefault();
+  function selectCity(city: Commune) {
+    if (city.codePostal) {
+      skipPostalLookup.current = true;
+      setPostal(city.codePostal);
+    }
+    setP((previous) => ({
+      ...previous,
+      city: city.nom,
+      commune: city.code,
+      lon: city.centre.coordinates[0],
+      lat: city.centre.coordinates[1],
+    }));
+    setCities([]);
+    setCityTotal(0);
+    setError('');
+  }
+  async function lookup(query: string, source: 'postal' | 'location') {
+    const currentRequest = ++requestId.current;
     setError('');
     setSearching(true);
     try {
-      const result = await api<Commune[]>(
-        `communes?postal=${encodeURIComponent(postal)}`,
-      );
-      setCities(result);
-      if (!result.length)
-        setError('Aucune commune trouvée pour ce code postal.');
-    } catch (e) {
-      setError((e as Error).message);
+      const result = await api<CommuneResult>(`communes?${query}`);
+      if (currentRequest !== requestId.current) return;
+      setCities(result.communes);
+      setCityTotal(result.total);
+      if (!result.total) {
+        setError(
+          source === 'postal'
+            ? 'Aucune commune trouvée pour ce code postal.'
+            : 'Aucune commune trouvée autour de cette position.',
+        );
+      } else if (
+        result.total === 1 &&
+        (source === 'location' || postal.length === 5)
+      ) {
+        const city = result.communes[0];
+        if (source === 'location' && city.codesPostaux?.[0]) {
+          skipPostalLookup.current = true;
+          setPostal(city.codesPostaux[0]);
+        }
+        selectCity(city);
+      }
+    } catch (cause) {
+      if (currentRequest === requestId.current)
+        setError((cause as Error).message);
     } finally {
-      setSearching(false);
+      if (currentRequest === requestId.current) setSearching(false);
+    }
+  }
+  useEffect(() => {
+    if (skipPostalLookup.current) {
+      skipPostalLookup.current = false;
+      return;
+    }
+    if (!postal.length) {
+      setCities([]);
+      setCityTotal(0);
+      return;
+    }
+    const timeout = window.setTimeout(
+      () => void lookup(`postal=${encodeURIComponent(postal)}`, 'postal'),
+      150,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [postal]);
+  async function locate() {
+    setError('');
+    if (!navigator.geolocation) {
+      setError('La géolocalisation n’est pas disponible sur cet appareil.');
+      return;
+    }
+    setLocating(true);
+    try {
+      const position = await new Promise<GeolocationPosition>(
+        (resolve, reject) =>
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: false,
+            timeout: 10_000,
+            maximumAge: 300_000,
+          }),
+      );
+      await lookup(
+        `lat=${position.coords.latitude}&lon=${position.coords.longitude}`,
+        'location',
+      );
+    } catch {
+      setError(
+        'Impossible d’obtenir ta position. Autorise la localisation ou saisis ton code postal.',
+      );
+    } finally {
+      setLocating(false);
     }
   }
   async function save(completed: boolean) {
@@ -64,6 +152,17 @@ export function ProfileEditor({
     } finally {
       setBusy(false);
     }
+  }
+  function zoneMissing() {
+    if (step === 0 && !p.commune) {
+      setError(
+        cities.length > 1
+          ? 'Choisis l’une des communes proposées pour continuer.'
+          : 'Indique ton code postal ou utilise ta position pour choisir une commune.',
+      );
+      return true;
+    }
+    return false;
   }
   return (
     <div className="profile-editor">
@@ -93,88 +192,150 @@ export function ProfileEditor({
           ][step]
         }
       </p>
-      {demo && (
-        <p className="notice">
-          Essai sur cet écran uniquement. Les offres fictives sont situées à
-          Lyon.
-        </p>
-      )}
       {step === 0 && (
         <div className="form-stack">
-          <form onSubmit={search}>
-            <label>
-              Ton code postal
-              <div className="input-action">
-                <input
-                  value={postal}
-                  onChange={(e) => setPostal(e.target.value)}
-                  inputMode="numeric"
-                  pattern="[0-9]{5}"
-                  maxLength={5}
-                  required
-                  placeholder="69001"
-                  aria-label="Code postal"
-                />
-                <button
-                  className="icon-button"
-                  aria-label="Chercher une commune"
-                  disabled={searching}
-                >
-                  <Search size={19} />
-                </button>
-              </div>
-            </label>
-          </form>
-          {cities.length > 0 && (
-            <div className="city-results">
-              {cities.map((c) => (
-                <button
-                  key={c.code}
-                  className={p.commune === c.code ? 'selected' : ''}
-                  onClick={() => {
+          <label>
+            Ton code postal
+            <div className="input-action">
+              <input
+                value={postal}
+                onChange={(event) => {
+                  const value = event.target.value
+                    .replace(/\D/g, '')
+                    .slice(0, 5);
+                  requestId.current += 1;
+                  setSearching(false);
+                  setPostal(value);
+                  setCities([]);
+                  setCityTotal(0);
+                  setError('');
+                  if (p.commune)
                     setP({
                       ...p,
-                      city: c.nom,
-                      commune: c.code,
-                      lon: c.centre.coordinates[0],
-                      lat: c.centre.coordinates[1],
+                      city: '',
+                      commune: '',
+                      lat: null,
+                      lon: null,
                     });
-                    setCities([]);
-                  }}
+                }}
+                inputMode="numeric"
+                maxLength={5}
+                placeholder="69001"
+                aria-label="Code postal"
+                autoComplete="postal-code"
+              />
+              <button
+                type="button"
+                className="icon-button"
+                title="Utiliser ma position actuelle"
+                aria-label="Utiliser ma position actuelle"
+                disabled={locating || searching}
+                onClick={() => void locate()}
+              >
+                {locating ? (
+                  <LoaderCircle className="spin" size={19} />
+                ) : (
+                  <LocateFixed size={19} />
+                )}
+              </button>
+              {cities.length > 0 && (
+                <div
+                  className="city-dropdown"
+                  role="listbox"
+                  aria-label="Communes trouvées"
                 >
-                  <MapPin size={16} />
-                  {c.nom}
-                  {p.commune === c.code && <Check size={16} />}
-                </button>
-              ))}
+                  <div className="city-dropdown-head">
+                    {cityTotal > cities.length
+                      ? `${cities.length} premiers résultats sur ${cityTotal}. Continue à saisir pour affiner.`
+                      : `${cityTotal} résultat${cityTotal > 1 ? 's' : ''}.`}
+                  </div>
+                  {cities.map((c) => (
+                    <button
+                      type="button"
+                      key={`${c.code}-${c.codePostal || ''}`}
+                      className="city-option"
+                      role="option"
+                      aria-selected={p.commune === c.code}
+                      onClick={() => selectCity(c)}
+                    >
+                      <MapPin size={16} />
+                      <span>
+                        <strong>{c.nom}</strong>
+                        <small>
+                          {c.codePostal
+                            ? `${c.codePostal} · `
+                            : ''}Commune {c.code}
+                        </small>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </label>
+          <p className="form-help">
+            Ta position sert uniquement à trouver la commune et n’est pas
+            enregistrée précisément.
+          </p>
+          {p.city && (
+            <div className="selected-city">
+              <span>
+                <Check size={17} />
+                <span>
+                  <small>Commune choisie</small>
+                  <strong>{p.city}</strong>
+                </span>
+              </span>
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => {
+                  setP({ ...p, city: '', commune: '', lat: null, lon: null });
+                  setPostal('');
+                  setCities([]);
+                  setCityTotal(0);
+                }}
+              >
+                Modifier
+              </button>
             </div>
           )}
-          {p.city && (
-            <p className="selected-city">
-              <MapPin size={17} />
-              {p.city}
-            </p>
-          )}
-          <div className="range-label">
-            Distance maximale <strong>{p.radius} km</strong>
+          <div className="range-field">
+            <div className="range-label">
+              <span>Distance maximale</span>
+              <strong>{p.radius} km</strong>
+            </div>
+            <Slider
+              aria-label="Distance maximale en kilomètres"
+              value={[p.radius]}
+              min={5}
+              max={100}
+              step={5}
+              onValueChange={(v) =>
+                setP({ ...p, radius: Array.isArray(v) ? v[0] : v })
+              }
+            />
+            <div className="range-scale" aria-hidden="true">
+              <span>5 km</span>
+              <span>100 km</span>
+            </div>
           </div>
-          <Slider
-            aria-label="Distance maximale en kilomètres"
-            value={[p.radius]}
-            min={5}
-            max={100}
-            step={5}
-            onValueChange={(v) =>
-              setP({ ...p, radius: Array.isArray(v) ? v[0] : v })
-            }
-          />
           <p className="form-help">
             Distance à vol d’oiseau autour du centre de la commune. Vérifie le
             trajet réel sur l’annonce.
           </p>
           <div>
-            <span className="field-title">Les contrats possibles</span>
-            <p className="form-help">Aucune sélection = tous les contrats.</p>
+            <div className="field-title-row">
+              <span className="field-title">Les contrats possibles</span>
+              <small>
+                {p.contracts.length
+                  ? `${p.contracts.length} sélectionné${p.contracts.length > 1 ? 's' : ''}`
+                  : 'Tous acceptés'}
+              </small>
+            </div>
+            <p className="form-help">
+              Sélectionne seulement si certains contrats ont ta préférence.
+            </p>
             <div className="choices">
               {Object.entries({
                 CDI: 'CDI',
@@ -184,6 +345,7 @@ export function ProfileEditor({
                 alternance: 'Alternance',
               }).map(([key, label]) => (
                 <button
+                  type="button"
                   className={
                     p.contracts.includes(key) ? 'choice selected' : 'choice'
                   }
@@ -199,6 +361,7 @@ export function ProfileEditor({
                   }
                 >
                   {label}
+                  {p.contracts.includes(key) && <Check size={14} />}
                 </button>
               ))}
             </div>
@@ -207,10 +370,22 @@ export function ProfileEditor({
       )}
       {step === 1 && (
         <div className="form-stack">
-          <span className="field-title">J’aimerais…</span>
+          <div className="field-title-row">
+            <span className="field-title">J’aimerais…</span>
+            <small>
+              {p.interests.length
+                ? `${p.interests.length} envie${p.interests.length > 1 ? 's' : ''}`
+                : 'À explorer'}
+            </small>
+          </div>
+          <p className="form-help">
+            Tu peux en choisir plusieurs. Appuie de nouveau pour retirer un
+            choix.
+          </p>
           <div className="interest-grid">
             {Object.entries(interests).map(([key, label]) => (
               <button
+                type="button"
                 key={key}
                 className={
                   p.interests.includes(key as Interest)
@@ -232,17 +407,27 @@ export function ProfileEditor({
             ))}
           </div>
           <button
-            className="text-button"
+            type="button"
+            className={
+              p.interests.length ? 'text-button' : 'text-button selected-text'
+            }
+            aria-pressed={!p.interests.length}
             onClick={() => setP({ ...p, interests: [] })}
           >
             Je ne sais pas encore
           </button>
-          <span className="field-title">
-            J’aimerais éviter… <small>(préférence)</small>
-          </span>
+          <div className="field-title-row">
+            <span className="field-title">J’aimerais éviter…</span>
+            <small>
+              {p.avoid.length
+                ? `${p.avoid.length} préférence${p.avoid.length > 1 ? 's' : ''}`
+                : 'Facultatif'}
+            </small>
+          </div>
           <div className="choices">
             {Object.entries(interests).map(([key, label]) => (
               <button
+                type="button"
                 key={key}
                 aria-pressed={p.avoid.includes(key as Interest)}
                 className={
@@ -253,6 +438,7 @@ export function ProfileEditor({
                 onClick={() => toggle('avoid', key as Interest)}
               >
                 {label}
+                {p.avoid.includes(key as Interest) && <Check size={14} />}
               </button>
             ))}
           </div>
@@ -264,7 +450,12 @@ export function ProfileEditor({
       )}
       {step === 2 && (
         <div className="form-stack">
-          <span className="field-title">Mes contraintes indispensables</span>
+          <div className="field-title-row">
+            <span className="field-title">Mes contraintes indispensables</span>
+            <small>
+              {[p.noNight, p.noWeekend].filter(Boolean).length || 'Aucune'}
+            </small>
+          </div>
           <label className="check-row" htmlFor="no-night">
             <Checkbox
               id="no-night"
@@ -285,6 +476,7 @@ export function ProfileEditor({
             Si l’annonce ne permet pas de vérifier une contrainte, elle sera
             écartée. Tu peux ainsi obtenir moins de résultats.
           </p>
+          <span className="field-title">Expérience et formation</span>
           <label className="check-row" htmlFor="beginner-only">
             <Checkbox
               id="beginner-only"
@@ -303,23 +495,44 @@ export function ProfileEditor({
             />
             <span>Je suis ouverte ou ouvert à une formation</span>
           </label>
-          <div className="range-label">
-            Ma dose de découverte <strong>{p.discovery} %</strong>
+          <div className="range-field">
+            <div className="range-label">
+              <span>Ma dose de découverte</span>
+              <strong>{p.discovery} %</strong>
+            </div>
+            <Slider
+              aria-label="Part de découverte"
+              min={15}
+              max={100}
+              step={5}
+              value={[p.discovery]}
+              onValueChange={(v) =>
+                setP({ ...p, discovery: Array.isArray(v) ? v[0] : v })
+              }
+            />
+            <div className="range-scale" aria-hidden="true">
+              <span>Plutôt ciblé</span>
+              <span>Très ouvert</span>
+            </div>
           </div>
-          <Slider
-            aria-label="Part de découverte"
-            min={15}
-            max={100}
-            step={5}
-            value={[p.discovery]}
-            onValueChange={(v) =>
-              setP({ ...p, discovery: Array.isArray(v) ? v[0] : v })
-            }
-          />
           <p className="form-help">
             Des métiers voisins et inattendus, en respectant toujours tes
             contraintes.
           </p>
+          <div className="profile-summary" aria-label="Résumé de tes choix">
+            <span>
+              <strong>{p.city || 'Commune à choisir'}</strong>
+              <small>Zone de recherche</small>
+            </span>
+            <span>
+              <strong>{p.radius} km</strong>
+              <small>Distance maximale</small>
+            </span>
+            <span>
+              <strong>{p.interests.length || 'Libre'}</strong>
+              <small>Envies choisies</small>
+            </span>
+          </div>
         </div>
       )}
       {error && (
@@ -340,38 +553,77 @@ export function ProfileEditor({
         ) : (
           <span />
         )}
-        {step < 2 ? (
-          <button
-            className="primary-button"
-            onClick={() => {
-              if (step === 0 && !p.commune) {
-                setError('Choisis une commune pour continuer.');
-                return;
-              }
-              setError('');
-              setStep(step + 1);
-            }}
-          >
-            Continuer
-            <ArrowRight size={17} />
-          </button>
-        ) : (
-          <button
-            className="primary-button"
-            disabled={busy}
-            onClick={() => save(true)}
-          >
-            {busy ? 'Enregistrement…' : 'Trouver mes pistes'}
-            <ArrowRight size={17} />
-          </button>
-        )}
+        <div className="editor-actions-right">
+          {step === 0 && !initial.completed ? (
+            <>
+              <button
+                className="primary-button"
+                disabled={busy || searching || locating}
+                onClick={() => {
+                  if (zoneMissing()) return;
+                  setError('');
+                  save(true);
+                }}
+              >
+                {busy ? 'Enregistrement…' : 'Découvrir mes pistes'}
+                <ArrowRight size={17} />
+              </button>
+              <button
+                className="secondary-button"
+                disabled={busy || searching || locating}
+                onClick={() => {
+                  if (zoneMissing()) return;
+                  setError('');
+                  setStep(1);
+                }}
+              >
+                Je précise mes envies <ArrowRight size={17} />
+              </button>
+            </>
+          ) : step === 2 ? (
+            <button
+              className="primary-button"
+              disabled={busy}
+              onClick={() => save(true)}
+            >
+              {busy ? 'Enregistrement…' : 'Trouver mes pistes'}
+              <ArrowRight size={17} />
+            </button>
+          ) : (
+            <>
+              <button
+                className="primary-button"
+                disabled={busy || searching || locating}
+                onClick={() => {
+                  if (zoneMissing()) return;
+                  setError('');
+                  setStep(step + 1);
+                }}
+              >
+                Continuer
+                <ArrowRight size={17} />
+              </button>
+              {!initial.completed && step === 1 && (
+                <button
+                  className="secondary-button"
+                  disabled={busy}
+                  onClick={() => save(true)}
+                >
+                  Découvrir d’abord <ArrowRight size={17} />
+                </button>
+              )}
+            </>
+          )}
+        </div>
       </div>
       <button
         className="text-button"
         disabled={busy}
         onClick={() => save(initial.completed)}
       >
-        Enregistrer et reprendre plus tard
+        {initial.completed
+          ? 'Enregistrer mes préférences'
+          : 'Enregistrer et reprendre plus tard'}
       </button>
     </div>
   );

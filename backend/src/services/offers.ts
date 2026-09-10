@@ -4,13 +4,20 @@ import type { Job, Profile } from '../model.ts';
 import { AppError } from '../validation.ts';
 import { remote } from './http.ts';
 import { limit } from './rate-limit.ts';
+import { MemoryCache } from './memory-cache.ts';
 
 let tokenCache: { token: string; expires: number } | null = null;
+type SearchResult = { jobs: Job[]; partial: boolean; fetchedAt: string };
+const searchMemory = new MemoryCache<SearchResult>(15 * 60_000, 100);
+const detailMemory = new MemoryCache<Job>(5 * 60_000, 500);
 
 async function token() {
   if (tokenCache && tokenCache.expires > Date.now() + 30000)
     return tokenCache.token;
-  if (!process.env.FRANCE_TRAVAIL_CLIENT_ID || !process.env.FRANCE_TRAVAIL_CLIENT_SECRET)
+  if (
+    !process.env.FRANCE_TRAVAIL_CLIENT_ID ||
+    !process.env.FRANCE_TRAVAIL_CLIENT_SECRET
+  )
     throw new AppError(
       503,
       'La connexion à France Travail n’est pas encore activée.',
@@ -28,6 +35,11 @@ async function token() {
       }),
     },
   );
+  if (r.status === 400 || r.status === 401)
+    throw new AppError(
+      503,
+      'La connexion à France Travail n’est pas configurée : vérifie les identifiants du client API.',
+    );
   if (!r.ok)
     throw new AppError(503, 'France Travail est momentanément indisponible.');
   const data = (await r.json()) as { access_token: string; expires_in: number };
@@ -48,22 +60,22 @@ async function ft(path: string) {
   return r;
 }
 
-export async function searchOffers(
-  p: Profile,
-): Promise<{ jobs: Job[]; partial: boolean; fetchedAt: string }> {
+export async function searchOffers(p: Profile): Promise<SearchResult> {
   if (!p.commune)
     throw new AppError(
       400,
       'Complète ta commune dans ton profil pour voir les offres.',
     );
   const key = `${p.commune}:${p.radius}`;
+  return searchMemory.getOrLoad(key, () => loadOffers(p, key));
+}
+
+async function loadOffers(p: Profile, key: string): Promise<SearchResult> {
   const { rows: entries } = await query<{
     jobs: Job[];
     fetched_at: string;
     partial: boolean;
-  }>('select jobs,fetched_at,partial from offer_searches where key=$1', [
-    key,
-  ]);
+  }>('select jobs,fetched_at,partial from offer_searches where key=$1', [key]);
   if (entries[0] && Date.now() - Date.parse(entries[0].fetched_at) < 15 * 60000)
     return {
       jobs: entries[0].jobs,
@@ -119,11 +131,16 @@ export async function cachedJob(id: string): Promise<Job> {
     'select job,checked_at from job_cache where id=$1',
     [id],
   );
-  if (!rows.length) throw new AppError(404, 'Cette offre n’est plus disponible.');
+  if (!rows.length)
+    throw new AppError(404, 'Cette offre n’est plus disponible.');
   return rows[0].job;
 }
 
 export async function verifyJob(id: string): Promise<Job> {
+  return detailMemory.getOrLoad(id, () => loadJob(id));
+}
+
+async function loadJob(id: string): Promise<Job> {
   let previous: Job | undefined;
   try {
     previous = await cachedJob(id);
@@ -133,7 +150,8 @@ export async function verifyJob(id: string): Promise<Job> {
   const r = await ft(`offres/${encodeURIComponent(id)}`);
   let job: Job;
   if (r.status === 404 || r.status === 204) {
-    if (!previous) throw new AppError(410, 'Cette annonce n’est plus disponible.');
+    if (!previous)
+      throw new AppError(410, 'Cette annonce n’est plus disponible.');
     job = { ...previous, active: false };
   } else {
     if (!r.ok)
@@ -142,7 +160,8 @@ export async function verifyJob(id: string): Promise<Job> {
         'Impossible de vérifier cette annonce pour le moment.',
       );
     const normalized = normalizeJob(await r.json());
-    if (!normalized) throw new AppError(503, 'Annonce illisible. Réessaie plus tard.');
+    if (!normalized)
+      throw new AppError(503, 'Annonce illisible. Réessaie plus tard.');
     job = normalized;
   }
   await query(

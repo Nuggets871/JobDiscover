@@ -1,15 +1,14 @@
 import { useState } from 'react';
 import { ArrowRight, LockKeyhole } from 'lucide-react';
 import { api } from '@/lib/api';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 export function AuthPanel({
   enabled,
   onSuccess,
 }: {
   enabled: boolean;
-  onSuccess: () => Promise<void>;
+  onSuccess?: () => Promise<void>;
 }) {
-  const [mode, setMode] = useState<'login' | 'signup' | 'recover'>('login');
+  const [mode, setMode] = useState<'email' | 'password'>('email');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -20,15 +19,21 @@ export function AuthPanel({
     setMessage('');
     const data = new FormData(e.currentTarget);
     try {
-      const result = await api<{ message?: string }>(`auth/${mode}`, 'POST', {
-        email: data.get('email'),
-        ...(mode === 'recover' ? {} : { password: data.get('password') }),
-      });
-      if (mode === 'login') await onSuccess();
-      else
+      if (mode === 'email') {
+        const result = await api<{ message?: string }>('auth/start', 'POST', {
+          email: data.get('email'),
+        });
         setMessage(
-          result.message || 'Consulte ta boîte e-mail pour continuer.',
+          result.message ||
+            'Vérifie ta boîte e-mail pour continuer. Le lien expire dans une heure.',
         );
+      } else {
+        await api('auth/login', 'POST', {
+          email: data.get('email'),
+          password: data.get('password'),
+        });
+        if (onSuccess) await onSuccess();
+      }
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -42,60 +47,37 @@ export function AuthPanel({
       <p>Garde tes favoris et retrouve tes envies, sur tous tes appareils.</p>
       {!enabled ? (
         <div className="notice">
-          Les comptes ne sont pas encore activés. Tu peux déjà essayer le
-          parcours avec les offres fictives. Aucun profil n’est enregistré.
+          Le service de comptes est momentanément indisponible. Réessaie dans
+          quelques instants.
         </div>
       ) : (
         <>
-          <Tabs
-            value={mode}
-            onValueChange={(v) => {
-              setMode(String(v) as 'login' | 'signup');
-              setError('');
-              setMessage('');
-            }}
-          >
-            <TabsList className="auth-tabs">
-              <TabsTrigger value="login">Connexion</TabsTrigger>
-              <TabsTrigger value="signup">Créer un compte</TabsTrigger>
-            </TabsList>
-          </Tabs>
           <form onSubmit={submit} className="form-stack">
             <label>
-              Adresse e-mail
+              {mode === 'email'
+                ? 'Ton adresse e-mail'
+                : 'Adresse e-mail ou identifiant'}
               <input
                 name="email"
-                type="email"
-                autoComplete="email"
+                type={mode === 'email' ? 'email' : 'text'}
+                autoComplete={mode === 'email' ? 'email' : 'username'}
                 required
                 maxLength={254}
-                placeholder="toi@exemple.fr"
+                placeholder={mode === 'email' ? 'toi@exemple.fr' : 'toi@exemple.fr'}
               />
             </label>
-            {mode !== 'recover' && (
+            {mode === 'password' && (
               <label>
                 Mot de passe
                 <input
                   name="password"
                   type="password"
-                  autoComplete={
-                    mode === 'signup' ? 'new-password' : 'current-password'
-                  }
+                  autoComplete="current-password"
                   required
-                  minLength={mode === 'signup' ? 12 : 1}
+                  minLength={1}
                   maxLength={128}
                 />
-                {mode === 'signup' && <small>12 caractères minimum.</small>}
               </label>
-            )}
-            {mode === 'signup' && (
-              <p className="form-help">
-                En créant ton compte, tu prends connaissance de notre{' '}
-                <a href="/confidentialite" target="_blank" rel="noreferrer">
-                  politique de confidentialité
-                </a>
-                .
-              </p>
             )}
             {error && (
               <p role="alert" className="error-message">
@@ -110,40 +92,36 @@ export function AuthPanel({
             <button className="primary-button" disabled={busy}>
               {busy
                 ? 'Un instant…'
-                : mode === 'recover'
-                  ? 'Envoyer le lien'
-                  : mode === 'login'
-                    ? 'Me connecter'
-                    : 'Créer mon compte'}
+                : mode === 'email'
+                  ? 'Recevoir mon lien de connexion'
+                  : 'Me connecter'}
               <ArrowRight size={18} />
             </button>
-            {mode === 'login' && (
-              <button
-                type="button"
-                className="text-button"
-                onClick={() => {
-                  setMode('recover');
-                  setError('');
-                  setMessage('');
-                }}
-              >
-                Mot de passe oublié ?
-              </button>
-            )}
-            {mode === 'recover' && (
-              <button
-                type="button"
-                className="text-button"
-                onClick={() => {
-                  setMode('login');
-                  setError('');
-                  setMessage('');
-                }}
-              >
-                Revenir à la connexion
-              </button>
-            )}
           </form>
+          <p className="form-help">
+            {mode === 'email'
+              ? 'Pas de mot de passe à retenir : on t’envoie un lien sécurisé. En créant ton compte, tu prends connaissance de notre '
+              : 'Tu peux aussi te connecter sans mot de passe, avec le lien reçu par e-mail. '}
+            {mode === 'email' && (
+              <a href="/confidentialite" target="_blank" rel="noreferrer">
+                politique de confidentialité
+              </a>
+            )}
+            {mode === 'email' && '.'}
+          </p>
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => {
+              setMode(mode === 'email' ? 'password' : 'email');
+              setError('');
+              setMessage('');
+            }}
+          >
+            {mode === 'email'
+              ? 'J’ai un mot de passe — me connecter autrement'
+              : 'Pas de mot de passe ? Recevoir un lien'}
+          </button>
         </>
       )}
       <p className="privacy-promise">

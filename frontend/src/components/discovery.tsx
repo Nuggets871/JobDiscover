@@ -18,7 +18,6 @@ import {
   Trash2,
   LoaderCircle,
 } from 'lucide-react';
-import { demoJobs } from '@/lib/demo';
 import {
   defaultProfile,
   interests,
@@ -49,13 +48,6 @@ import {
 } from '@/components/ui/alert-dialog';
 import { AuthPanel } from './auth-panel';
 import { ProfileEditor } from './profile-editor';
-const demoProfile = {
-  ...defaultProfile,
-  city: 'Lyon',
-  commune: '69123',
-  lat: 45.764,
-  lon: 4.835,
-};
 type Panel = 'auth' | 'profile' | 'detail' | 'reason' | null;
 export default function Discovery() {
   const [tab, setTab] = useState('discover');
@@ -66,8 +58,8 @@ export default function Discovery() {
     offers: false,
     ai: false,
   });
-  const [profile, setProfile] = useState<Profile>(demoProfile);
-  const [jobs, setJobs] = useState<Job[]>(demoJobs);
+  const [profile, setProfile] = useState<Profile>(defaultProfile);
+  const [jobs, setJobs] = useState<Job[]>([]);
   const [feedback, setFeedback] = useState<Reaction[]>([]);
   const [skipped, setSkipped] = useState<string[]>([]);
   const [surprise, setSurprise] = useState(false);
@@ -94,7 +86,6 @@ export default function Discovery() {
     offset: feedback.length + skipped.length,
   });
   const current = cards[0];
-  const demo = !user;
   const saved = feedback.filter(
     (f) =>
       f.verdict !== 'reject' &&
@@ -153,7 +144,7 @@ export default function Discovery() {
       } catch {
         if (active)
           setError(
-            'Impossible de vérifier la disponibilité des comptes. La démonstration reste accessible.',
+            'Impossible de vérifier la disponibilité du service. Réessaie dans quelques instants.',
           );
       } finally {
         if (active) setLoading(false);
@@ -164,16 +155,12 @@ export default function Discovery() {
     };
   }, []);
   async function saveProfile(p: Profile) {
-    if (user) await api('profile', 'PUT', p);
+    await api('profile', 'PUT', p);
     setProfile(p);
     setPanel(null);
     setSkipped([]);
-    setNotice(
-      user
-        ? 'Tes préférences sont enregistrées.'
-        : 'Préférences appliquées à la démonstration, sans enregistrement.',
-    );
-    if (user) await loadOffers(p);
+    setNotice('Tes préférences sont enregistrées.');
+    await loadOffers(p);
   }
   async function react(
     verdict: Reaction['verdict'],
@@ -194,8 +181,7 @@ export default function Discovery() {
         reason,
         created_at: new Date().toISOString(),
       };
-      if (user)
-        await api('feedback', 'POST', { job_id: job.id, verdict, reason });
+      await api('feedback', 'POST', { job_id: job.id, verdict, reason });
       setFeedback((f) => [reaction, ...f.filter((x) => x.job_id !== job.id)]);
       setLast({
         reaction,
@@ -228,14 +214,12 @@ export default function Discovery() {
     setBusy(true);
     setError('');
     try {
-      if (user) {
-        if (last.previous) await api('feedback', 'POST', last.previous);
-        else
-          await api(
-            `feedback?id=${encodeURIComponent(last.reaction.job_id)}`,
-            'DELETE',
-          );
-      }
+      if (last.previous) await api('feedback', 'POST', last.previous);
+      else
+        await api(
+          `feedback?id=${encodeURIComponent(last.reaction.job_id)}`,
+          'DELETE',
+        );
       setFeedback((f) => [
         ...(last.previous ? [last.previous] : []),
         ...f.filter((x) => x.job_id !== last.reaction.job_id),
@@ -255,8 +239,7 @@ export default function Discovery() {
     pending.current = true;
     setBusy(true);
     try {
-      if (user)
-        await api(`feedback?id=${encodeURIComponent(f.job_id)}`, 'DELETE');
+      await api(`feedback?id=${encodeURIComponent(f.job_id)}`, 'DELETE');
       setFeedback((all) => all.filter((x) => x.job_id !== f.job_id));
       setNotice('Offre retirée des favoris. Elle peut à nouveau apparaître.');
     } catch (e) {
@@ -270,29 +253,27 @@ export default function Discovery() {
     setDetail(job);
     setPanel('detail');
     setError('');
-    if (user) {
-      setBusy(true);
-      try {
-        const fresh = await api<Job>(`offers/${encodeURIComponent(job.id)}`);
-        setDetail(fresh);
-        setJobs((all) => all.map((j) => (j.id === fresh.id ? fresh : j)));
+    setBusy(true);
+    try {
+      const fresh = await api<Job>(`offers/${encodeURIComponent(job.id)}`);
+      setDetail(fresh);
+      setJobs((all) => all.map((j) => (j.id === fresh.id ? fresh : j)));
+      setFeedback((all) =>
+        all.map((f) => (f.job_id === fresh.id ? { ...f, job: fresh } : f)),
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 410) {
+        setDetail({ ...job, active: false });
         setFeedback((all) =>
-          all.map((f) => (f.job_id === fresh.id ? { ...f, job: fresh } : f)),
+          all.map((f) =>
+            f.job_id === job.id
+              ? { ...f, job: { ...f.job, active: false } }
+              : f,
+          ),
         );
-      } catch (e) {
-        if (e instanceof ApiError && e.status === 410) {
-          setDetail({ ...job, active: false });
-          setFeedback((all) =>
-            all.map((f) =>
-              f.job_id === job.id
-                ? { ...f, job: { ...f.job, active: false } }
-                : f,
-            ),
-          );
-        } else setError((e as Error).message);
-      } finally {
-        setBusy(false);
-      }
+      } else setError((e as Error).message);
+    } finally {
+      setBusy(false);
     }
   }
   function surpriseNow() {
@@ -300,25 +281,23 @@ export default function Discovery() {
     setSurprise(true);
     setNotice('Place à une autre piste. Tes contraintes restent respectées.');
   }
-  function resetDemo() {
+  function resetSession() {
     setUser(null);
-    setProfile(demoProfile);
-    setJobs(demoJobs);
+    setProfile(defaultProfile);
+    setJobs([]);
     setFeedback([]);
     setSkipped([]);
     setLast(null);
     setPanel(null);
     setTab('discover');
-    setNotice(
-      'Tu es dans la démonstration. Aucune donnée personnelle n’y est conservée.',
-    );
+    setNotice('Tu es déconnecté.');
     setSourceError('');
   }
   async function logout() {
     setBusy(true);
     try {
       await api('auth/logout', 'POST', {});
-      resetDemo();
+      resetSession();
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -353,7 +332,7 @@ export default function Discovery() {
         password: deletePassword,
       });
       setDeleteOpen(false);
-      resetDemo();
+      resetSession();
       setNotice('Ton compte et tes données actives ont été supprimés.');
     } catch (e) {
       setDeleteError((e as Error).message);
@@ -438,9 +417,7 @@ export default function Discovery() {
             >
               <div className="section-heading">
                 <div>
-                  <span className="eyebrow">
-                    {demo ? 'PREMIÈRES PISTES' : 'TA SÉLECTION'}
-                  </span>
+                  <span className="eyebrow">TA SÉLECTION</span>
                   <h2>À découvrir aujourd’hui</h2>
                 </div>
                 <button
@@ -477,7 +454,7 @@ export default function Discovery() {
                     Réessayer
                   </button>
                 </div>
-              ) : loading && user ? (
+              ) : loading ? (
                 <output className="empty-state">
                   <LoaderCircle className="spin" />
                   <h3>On cherche tes prochaines pistes…</h3>
@@ -596,20 +573,26 @@ export default function Discovery() {
                 <div className="empty-state">
                   <Compass size={34} />
                   <h3>
-                    {user && !profile.completed
-                      ? 'On fait connaissance ?'
-                      : 'Tu as exploré ces pistes.'}
+                    {!user
+                      ? 'Connecte-toi pour découvrir les offres.'
+                      : !profile.completed
+                        ? 'On fait connaissance ?'
+                        : 'Tu as exploré ces pistes.'}
                   </h3>
                   <p>
-                    {user && !profile.completed
-                      ? 'Quelques envies et une commune suffisent pour commencer.'
-                      : 'Aucune autre offre ne correspond ici à tes critères. Tu peux revoir les offres passées ou modifier tes filtres.'}
+                    {!user
+                      ? 'Tes préférences permettent de sélectionner des annonces France Travail qui correspondent à ta recherche.'
+                      : !profile.completed
+                        ? 'Quelques envies et une commune suffisent pour commencer.'
+                        : 'Aucune autre offre ne correspond ici à tes critères. Tu peux revoir les offres passées ou modifier tes filtres.'}
                   </p>
                   <button
                     className="primary-button"
-                    onClick={() => setPanel('profile')}
+                    onClick={() => setPanel(user ? 'profile' : 'auth')}
                   >
-                    Ajuster mes préférences
+                    {user
+                      ? 'Ajuster mes préférences'
+                      : 'Se connecter ou créer un compte'}
                   </button>
                   {skipped.length > 0 && (
                     <button
@@ -665,24 +648,10 @@ export default function Discovery() {
                   zone.
                 </p>
               )}
-              {demo ? (
-                <div className="demo-note">
-                  Démonstration · Offres fictives
-                  <br />
-                  <button
-                    className="text-button"
-                    onClick={() => setPanel('auth')}
-                  >
-                    Créer mon espace pour garder mes pistes{' '}
-                    <ArrowUpRight size={14} />
-                  </button>
-                </div>
-              ) : (
-                <p className="demo-note">
-                  Offres France Travail et partenaires · Disponibilité à
-                  vérifier
-                </p>
-              )}
+              <p className="source-note">
+                Annonces France Travail et partenaires · Vérifie les
+                informations auprès de l’employeur
+              </p>
             </section>
             <aside className="right-note">
               <span className="vertical-rule" />
@@ -717,12 +686,6 @@ export default function Discovery() {
                 <TabsTrigger value="maybe">Peut-être</TabsTrigger>
               </TabsList>
             </Tabs>
-            {demo && (
-              <p className="notice">
-                Favoris de démonstration : ils disparaissent en quittant ou en
-                rechargeant la page.
-              </p>
-            )}
             {saved.length === 0 ? (
               <div className="empty-state">
                 <Heart size={32} />
@@ -732,9 +695,10 @@ export default function Discovery() {
                 </p>
                 <button
                   className="primary-button"
-                  onClick={() => setTab('discover')}
+                  onClick={() => (user ? setTab('discover') : setPanel('auth'))}
                 >
-                  Découvrir des offres <ArrowRight size={17} />
+                  {user ? 'Découvrir des offres' : 'Se connecter'}{' '}
+                  <ArrowRight size={17} />
                 </button>
               </div>
             ) : (
@@ -792,8 +756,8 @@ export default function Discovery() {
             {!user ? (
               <>
                 <p>
-                  Essaie tes préférences dans la démonstration, ou crée un
-                  compte pour les retrouver.
+                  Connecte-toi pour définir tes préférences et recevoir des
+                  annonces correspondant à ta recherche.
                 </p>
                 <div className="profile-section">
                   <button
@@ -801,12 +765,6 @@ export default function Discovery() {
                     onClick={() => setPanel('auth')}
                   >
                     Créer mon espace <ArrowRight size={18} />
-                  </button>
-                  <button
-                    className="text-button"
-                    onClick={() => setPanel('profile')}
-                  >
-                    Essayer le questionnaire
                   </button>
                 </div>
               </>
@@ -881,10 +839,7 @@ export default function Discovery() {
                 envoyées à DeepSeek. Aucun autre membre ne peut consulter ton
                 profil.
               </p>
-              <a
-                className="text-button"
-                href="/confidentialite"
-              >
+              <a className="text-button" href="/confidentialite">
                 Comprendre les données conservées <ArrowUpRight size={16} />
               </a>
               {user && (
@@ -948,7 +903,9 @@ export default function Discovery() {
               {panel === 'auth'
                 ? 'Mon espace'
                 : panel === 'profile'
-                  ? 'Mes envies & mes filtres'
+                  ? profile.completed
+                    ? 'Mes envies & mes filtres'
+                    : 'Ton point de départ'
                   : panel === 'reason'
                     ? 'Ce qui te freine'
                     : 'Le détail de cette piste'}
@@ -966,12 +923,8 @@ export default function Discovery() {
             {panel === 'auth' && (
               <AuthPanel enabled={status.accounts} onSuccess={loadAccount} />
             )}{' '}
-            {panel === 'profile' && (
-              <ProfileEditor
-                initial={profile}
-                demo={demo}
-                onSave={saveProfile}
-              />
+            {panel === 'profile' && user && (
+              <ProfileEditor initial={profile} onSave={saveProfile} />
             )}{' '}
             {panel === 'reason' && last && (
               <div className="reason-panel">
@@ -1005,11 +958,7 @@ export default function Discovery() {
             )}
             {panel === 'detail' && detail && (
               <div className="detail-panel">
-                <span className="eyebrow">
-                  {detail.demo
-                    ? 'EXEMPLE FICTIF'
-                    : 'FRANCE TRAVAIL & PARTENAIRES'}
-                </span>
+                <span className="eyebrow">FRANCE TRAVAIL & PARTENAIRES</span>
                 <h2>{detail.title}</h2>
                 <p>
                   {detail.company} · {detail.city}
@@ -1081,10 +1030,6 @@ export default function Discovery() {
                   >
                     Voir l’annonce et candidater <ArrowUpRight size={18} />
                   </a>
-                ) : detail.demo ? (
-                  <p className="notice">
-                    Cette offre est fictive. Aucune candidature n’est possible.
-                  </p>
                 ) : null}
                 <button
                   className="secondary-button"
@@ -1132,7 +1077,7 @@ export default function Discovery() {
           <button
             className="primary-button danger-button"
             disabled={
-              busy || deleteText !== 'SUPPRIMER' || deletePassword.length < 12
+              busy || deleteText !== 'SUPPRIMER' || deletePassword.length < 1
             }
             onClick={deleteAccount}
           >

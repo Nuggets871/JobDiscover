@@ -5,6 +5,8 @@ import {
   validateProfile,
   validateFeedback,
   safeExternalUrl,
+  validLogin,
+  validLoginPassword,
   validPassword,
 } from '../src/validation.ts';
 import { normalizeJob, deduplicate } from '../src/jobs.ts';
@@ -25,6 +27,13 @@ void test('profile validator drops injected ownership and rejects invalid constr
     { interests: ['aider'], avoid: ['aider'] },
   ])
     assert.throws(() => validateProfile({ ...defaultProfile, ...patch }));
+});
+
+void test('login accepts the seeded username and legacy passwords', () => {
+  assert.equal(validLogin('ggez'), 'ggez');
+  assert.equal(validLoginPassword('ggez'), 'ggez');
+  assert.throws(() => validLogin('not valid!'));
+  assert.throws(() => validLoginPassword(''));
 });
 
 void test('feedback cannot supply a job snapshot or another owner', () => {

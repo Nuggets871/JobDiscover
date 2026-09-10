@@ -11,9 +11,9 @@ export function Privacy() {
         Qui le reste.
       </h1>
       <p>
-        La démonstration utilise uniquement des offres fictives. Ses choix
-        restent en mémoire dans la page et disparaissent au rechargement. Elle
-        ne crée aucun compte.
+        JobDiscover présente des annonces fournies par France Travail et ses
+        partenaires. Un compte est nécessaire pour enregistrer tes préférences
+        et tes favoris.
       </p>
       <section>
         <h2>Quand les comptes sont activés</h2>
@@ -23,6 +23,12 @@ export function Privacy() {
           commune de recherche, les préférences, les contraintes et les
           réactions servent à sélectionner les offres. Nous ne demandons ni
           adresse précise, ni date de naissance, ni CV.
+        </p>
+        <p>
+          Si tu choisis la géolocalisation, ta position est utilisée une seule
+          fois pour interroger l’API géographique publique. La position précise
+          est ensuite écartée : seule la commune et son point central sont
+          conservés dans ton profil.
         </p>
       </section>
       <section>

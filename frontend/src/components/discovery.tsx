@@ -347,7 +347,6 @@ export default function Discovery() {
         <a className="wordmark" href="/">
           jobdiscover<span className="wordmark-dot">.</span>
         </a>
-        <span className="edition">DE NOUVELLES PERSPECTIVES</span>
         <button
           className={user ? 'avatar' : 'account-button'}
           onClick={() => (user ? setTab('profile') : setPanel('auth'))}
@@ -390,38 +389,10 @@ export default function Discovery() {
         </TabsList>
         <TabsContent value="discover">
           <div className="workspace">
-            <aside className="intro">
-              <span className="eyebrow">UN PAS VERS LA SUITE</span>
-              <h1>
-                Et si ton prochain
-                <br />
-                travail te <em>surprenait&nbsp;?</em>
-              </h1>
-              <p>
-                Des pistes à explorer, à ton rythme.
-                <br />
-                Tu n’as pas besoin d’avoir tout décidé.
-              </p>
-              <div className="aside-note">
-                <span className="tiny-label">LE PRINCIPE</span>
-                <p>
-                  Ce qui t’attire nous guide.
-                  <br />
-                  La curiosité fait le reste.
-                </p>
-                <MoveUpRight size={30} strokeWidth={1} />
-              </div>
-            </aside>
             <section
               className="discovery-column"
               aria-label="Offres à découvrir"
             >
-              <div className="section-heading">
-                <div>
-                  <span className="eyebrow">TA SÉLECTION</span>
-                  <h2>À découvrir aujourd’hui</h2>
-                </div>
-              </div>
               <div className="filter-bar">
                 <div className="filter-summary">
                   <button onClick={() => setPanel('profile')}>
@@ -630,7 +601,7 @@ export default function Discovery() {
                   <RotateCcw size={14} />
                   Annuler
                 </button>
-                {current ? (
+                {current && (
                   <button
                     onClick={() => {
                       setSkipped((s) => [...s, current.job.id]);
@@ -641,12 +612,10 @@ export default function Discovery() {
                   >
                     Passer sans avis <ArrowRight size={14} />
                   </button>
-                ) : (
-                  <span>Aucune réponse n’est définitive.</span>
                 )}
               </div>
               <button
-                className="mobile-surprise text-button"
+                className="surprise-action text-button"
                 onClick={surpriseNow}
                 disabled={!current}
               >
@@ -658,27 +627,7 @@ export default function Discovery() {
                   zone.
                 </p>
               )}
-              <p className="source-note">
-                Annonces France Travail et partenaires · Vérifie les
-                informations auprès de l’employeur
-              </p>
             </section>
-            <aside className="right-note">
-              <span className="vertical-rule" />
-              <span className="eyebrow">GARDE L’ESPRIT OUVERT</span>
-              <p>Le bon métier n’est pas toujours celui auquel on pense.</p>
-              <button
-                className="text-button"
-                onClick={surpriseNow}
-                disabled={!current}
-              >
-                Surprends-moi <ArrowRight size={16} />
-              </button>
-              <div className="discovery-note">
-                Tes contraintes sont respectées, même quand on sort des sentiers
-                battus.
-              </div>
-            </aside>
           </div>
         </TabsContent>
         <TabsContent value="saved">
@@ -1109,7 +1058,7 @@ export default function Discovery() {
         </AlertDialogContent>
       </AlertDialog>
       <footer className="desktop-footer">
-        <span>Un peu de curiosité. De nouvelles possibilités.</span>
+        <span>Annonces France Travail et partenaires</span>
         <a href="/confidentialite">Confidentialité</a>
       </footer>
     </div>

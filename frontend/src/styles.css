@@ -498,19 +498,20 @@ button {
 }
 @media (max-width: 760px) {
   .masthead {
-    height: 74px;
-    margin: 0 22px;
+    height: 50px;
+    margin: 0 18px;
   }
   .wordmark {
-    font-size: 26px;
+    font-size: 21px;
+    letter-spacing: -1.1px;
   }
-  .avatar {
-    width: 38px;
-    height: 38px;
+  .masthead .account-button,
+  .masthead .avatar {
+    display: none;
   }
   .workspace {
     display: block;
-    padding: 27px 20px 112px;
+    padding: 14px 20px 112px;
     max-width: 510px;
     margin: auto;
   }
@@ -1564,6 +1565,29 @@ input:not([type='checkbox']) {
   .workspace {
     padding-top: 22px;
     padding-bottom: 84px;
+  }
+  .section-heading {
+    justify-content: flex-end;
+    min-height: 0;
+  }
+  .section-heading > div:first-child {
+    display: none;
+  }
+  .filter-summary {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 6px;
+    margin: 10px 0 12px;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+  .filter-summary::-webkit-scrollbar {
+    display: none;
+  }
+  .filter-summary span,
+  .filter-summary button {
+    white-space: nowrap;
+    padding: 5px 9px;
   }
   .reaction-bar {
     gap: 32px;

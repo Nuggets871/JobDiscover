@@ -535,39 +535,39 @@ export default function Discovery() {
                         Découvrir les missions <ArrowUpRight size={18} />
                       </button>
                     </div>
+                    <div className="reaction-bar">
+                      <button
+                        disabled={busy}
+                        onClick={() => react('reject')}
+                        className="reaction reject"
+                      >
+                        <span>
+                          <X />
+                        </span>
+                        Pas pour moi
+                      </button>
+                      <button
+                        disabled={busy}
+                        onClick={() => react('maybe')}
+                        className="reaction maybe"
+                      >
+                        <span>
+                          <Bookmark />
+                        </span>
+                        Peut-être
+                      </button>
+                      <button
+                        disabled={busy}
+                        onClick={() => react('like')}
+                        className="reaction like"
+                      >
+                        <span>
+                          <Heart />
+                        </span>
+                        Ça me plaît
+                      </button>
+                    </div>
                   </article>
-                  <div className="reaction-bar">
-                    <button
-                      disabled={busy}
-                      onClick={() => react('reject')}
-                      className="reaction reject"
-                    >
-                      <span>
-                        <X />
-                      </span>
-                      Pas pour moi
-                    </button>
-                    <button
-                      disabled={busy}
-                      onClick={() => react('maybe')}
-                      className="reaction maybe"
-                    >
-                      <span>
-                        <Bookmark />
-                      </span>
-                      Peut-être
-                    </button>
-                    <button
-                      disabled={busy}
-                      onClick={() => react('like')}
-                      className="reaction like"
-                    >
-                      <span>
-                        <Heart />
-                      </span>
-                      Ça me plaît
-                    </button>
-                  </div>
                 </>
               ) : (
                 <div className="empty-state">

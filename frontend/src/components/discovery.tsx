@@ -421,6 +421,28 @@ export default function Discovery() {
                   <span className="eyebrow">TA SÉLECTION</span>
                   <h2>À découvrir aujourd’hui</h2>
                 </div>
+              </div>
+              <div className="filter-bar">
+                <div className="filter-summary">
+                  <button onClick={() => setPanel('profile')}>
+                    <MapPin size={14} />
+                    {profile.city || 'Choisir ma ville'} · {profile.radius} km
+                  </button>
+                  <button onClick={() => setPanel('profile')}>
+                    {profile.contracts.length
+                      ? profile.contracts.join(' · ')
+                      : 'Tous les contrats'}
+                  </button>
+                  {profile.noWeekend && <span>Sans week-end</span>}
+                  {profile.noNight && <span>Sans nuit</span>}
+                  {profile.domain && profile.domainPreference !== 'any' && (
+                    <span>
+                      {profile.domainPreference === 'avoid'
+                        ? `Sans : ${profile.domain}`
+                        : `Domaine : ${profile.domain}`}
+                    </span>
+                  )}
+                </div>
                 <button
                   className="icon-button"
                   onClick={() => setPanel('profile')}
@@ -428,26 +450,6 @@ export default function Discovery() {
                 >
                   <SlidersHorizontal size={20} />
                 </button>
-              </div>
-              <div className="filter-summary">
-                <button onClick={() => setPanel('profile')}>
-                  <MapPin size={14} />
-                  {profile.city || 'Choisir ma ville'} · {profile.radius} km
-                </button>
-                <button onClick={() => setPanel('profile')}>
-                  {profile.contracts.length
-                    ? profile.contracts.join(' · ')
-                    : 'Tous les contrats'}
-                </button>
-                {profile.noWeekend && <span>Sans week-end</span>}
-                {profile.noNight && <span>Sans nuit</span>}
-                {profile.domain && profile.domainPreference !== 'any' && (
-                  <span>
-                    {profile.domainPreference === 'avoid'
-                      ? `Sans : ${profile.domain}`
-                      : `Domaine : ${profile.domain}`}
-                  </span>
-                )}
               </div>
               {sourceError ? (
                 <div className="empty-state">

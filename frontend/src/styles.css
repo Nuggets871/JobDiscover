@@ -96,6 +96,14 @@ button {
   max-width: 1600px;
   margin: auto;
 }
+[data-slot='tabs-content'] {
+  min-width: 0;
+}
+.workspace,
+.discovery-column,
+.filter-bar {
+  min-width: 0;
+}
 .masthead {
   height: 100px;
   margin: 0 5%;
@@ -223,11 +231,18 @@ button {
   place-items: center;
   background: var(--paper);
 }
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 .filter-summary {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   margin: 18px 0;
+  flex: 1;
+  min-width: 0;
 }
 .filter-summary span,
 .filter-summary button {
@@ -1567,17 +1582,17 @@ input:not([type='checkbox']) {
     padding-bottom: 84px;
   }
   .section-heading {
-    justify-content: flex-end;
-    min-height: 0;
-  }
-  .section-heading > div:first-child {
     display: none;
+  }
+  .filter-bar {
+    gap: 6px;
+    margin: 10px 0 12px;
   }
   .filter-summary {
     flex-wrap: nowrap;
     overflow-x: auto;
     gap: 6px;
-    margin: 10px 0 12px;
+    margin: 0;
     padding-bottom: 2px;
     scrollbar-width: none;
   }

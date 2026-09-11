@@ -113,6 +113,7 @@ export type Job = {
   description: string;
   tags: Interest[];
   sector: string;
+  romeCode: string | null;
   experienceRequired: boolean;
   night: boolean | null;
   weekend: boolean | null;

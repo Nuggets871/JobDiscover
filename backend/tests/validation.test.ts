@@ -5,7 +5,7 @@ import {
   validateProfile,
   validateFeedback,
   safeExternalUrl,
-  validLogin,
+  validEmail,
   validLoginPassword,
   validPassword,
 } from '../src/validation.ts';
@@ -47,10 +47,10 @@ void test('profile validator keeps the new parcours fields', () => {
   assert.equal(p.desires, "j'aimerais aider les gens dans le soin");
 });
 
-void test('login accepts the seeded username and legacy passwords', () => {
-  assert.equal(validLogin('ggez'), 'ggez');
+void test('login requires a valid email and a non-empty password', () => {
+  assert.equal(validEmail('Ggez@Example.fr'), 'ggez@example.fr');
+  assert.throws(() => validEmail('not an email'));
   assert.equal(validLoginPassword('ggez'), 'ggez');
-  assert.throws(() => validLogin('not valid!'));
   assert.throws(() => validLoginPassword(''));
 });
 
@@ -84,7 +84,7 @@ void test('external links reject executable and credential-bearing URLs', () => 
     safeExternalUrl('https://example.com/job'),
     'https://example.com/job',
   );
-  assert.throws(() => validPassword('trop court'));
+  assert.throws(() => validPassword('court'));
 });
 
 void test('provider normalization never invents missing salary, schedules or coordinates', () => {

@@ -64,6 +64,7 @@ export function normalizeJob(raw: Record<string, unknown>): Job | null {
   const lat = Number(place.latitude),
     lon = Number(place.longitude);
   const exp = clean(raw.experienceExige, 4);
+  const rome = clean(raw.romeCode, 10);
   return {
     id,
     title,
@@ -87,6 +88,7 @@ export function normalizeJob(raw: Record<string, unknown>): Job | null {
       clean(raw.secteurActiviteLibelle, 120) ||
       clean(raw.romeLibelle, 120) ||
       'Métier à explorer',
+    romeCode: /^[A-Z]\d{4}$/.test(rome) ? rome : null,
     experienceRequired: exp !== 'D',
     night,
     weekend,

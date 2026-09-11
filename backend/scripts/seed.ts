@@ -4,7 +4,7 @@ import { query } from '../src/db.ts';
 if (process.env.ALLOW_DEV_SEED !== 'true')
   throw new Error('Refusing seed without ALLOW_DEV_SEED=true');
 
-const login = 'ggez';
+const login = 'ggez@example.fr';
 const password = 'ggez';
 const encoded = await passwordHash(password);
 

@@ -10,6 +10,7 @@ import {
   eligible,
   learnedWeights,
   effectiveWeights,
+  rejectedMetiers,
   recommend,
 } from '../src/recommendations.ts';
 
@@ -26,6 +27,7 @@ const j: Job = {
   description: 'Accueillir le public',
   tags: ['accueillir'],
   sector: 'Culture',
+  romeCode: 'K1302',
   experienceRequired: false,
   night: false,
   weekend: false,
@@ -106,6 +108,20 @@ void test('manual weights override declared and learned signals', () => {
       [liked],
     ).accueillir,
     -1,
+  );
+});
+
+void test('a missions rejection excludes the whole métier, not only that offer', () => {
+  const sameMetier = { ...j, id: 'two', company: 'Autre' };
+  const otherMetier = { ...j, id: 'three', romeCode: 'M1805' };
+  const rejected = [
+    { job: j, job_id: j.id, verdict: 'reject', reason: 'missions' } as Reaction,
+  ];
+  assert.ok(rejectedMetiers(rejected).has('rome:K1302'));
+  const result = recommend([sameMetier, otherMetier], defaultProfile, rejected);
+  assert.deepEqual(
+    result.map((r) => r.job.id),
+    ['three'],
   );
 });
 

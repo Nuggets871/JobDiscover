@@ -59,8 +59,7 @@ TEST_DATABASE_URL=postgresql://jobdiscover:local-development-only@127.0.0.1:5432
 
 ## Fonctionnement
 
-- **Comptes** : e-mail vérifié + mot de passe (PBKDF2, 600 000 itérations), récupération par lien à usage unique et cookie de session HttpOnly.
-- **E-mails locaux** : avec `AUTH_EMAIL_MODE=console`, les liens de confirmation sont affichés dans le terminal du backend. Ce mode est refusé en production.
+- **Comptes** : e-mail + mot de passe (PBKDF2, 600 000 itérations) et cookie de session HttpOnly (durée réglable via `SESSION_DAYS`).
 - **Offres réelles** : France Travail (clé partenaire) via `FRANCE_TRAVAIL_CLIENT_ID` / `_SECRET`. Les recherches sont mises en cache 15 min.
 - **Cache** : recherches France Travail conservées 15 minutes en mémoire et dans PostgreSQL, détails 5 minutes en mémoire, référentiel complet des codes postaux et communes 7 jours en mémoire, géolocalisations 24 heures. Les requêtes simultanées identiques sont regroupées.
 - **Recommandations** : préférences du profil + réactions (j'aime / peut-être / pas pour moi), avec une part de découverte réglable.

@@ -77,6 +77,26 @@ export function learnedWeights(feedback: Reaction[], now = Date.now()) {
   return weights;
 }
 const clamp = (n: number) => Math.max(-3, Math.min(3, n));
+export function metierKey(job: Job): string | null {
+  if (job.romeCode) return `rome:${job.romeCode}`;
+  const tokens = job.title
+    .toLowerCase()
+    .split(/[^a-z0-9à-öø-ÿœ]+/i)
+    .filter((word) => word.length > 2)
+    .sort()
+    .join(',');
+  if (!tokens) return null;
+  return `intitule:${job.sector.toLowerCase()}:${tokens}`;
+}
+export function rejectedMetiers(feedback: Reaction[]): Set<string> {
+  const set = new Set<string>();
+  for (const f of feedback)
+    if (f.verdict === 'reject' && f.reason === 'missions') {
+      const key = metierKey(f.job);
+      if (key) set.add(key);
+    }
+  return set;
+}
 export function effectiveWeights(p: Profile, feedback: Reaction[]) {
   const learned = learnedWeights(feedback);
   const out: Partial<Record<Interest, number>> = {};
@@ -118,12 +138,17 @@ export function recommend(
   const active = (Object.keys(weights) as Interest[]).filter(
     (t) => (weights[t] || 0) >= 0.5,
   );
+  const excluded = rejectedMetiers(feedback);
   const seen = new Set([
     ...feedback.map((f) => f.job_id),
     ...(options.skipped || []),
   ]);
   const candidates = jobs
-    .filter((j) => !seen.has(j.id) && eligible(j, p))
+    .filter((j) => {
+      if (seen.has(j.id) || !eligible(j, p)) return false;
+      const key = metierKey(j);
+      return key === null || !excluded.has(key);
+    })
     .map((job) => {
       const strong = job.tags.filter((t) => (weights[t] || 0) >= 2);
       const near = active.find((t) =>

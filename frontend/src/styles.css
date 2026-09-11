@@ -242,6 +242,37 @@ button {
 .search-clear:hover {
   color: var(--ink);
 }
+.search-form {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+.search-form .search-field {
+  margin-top: 0;
+}
+.search-form .primary-button {
+  width: 100%;
+}
+.search-form .text-button {
+  justify-content: center;
+  color: var(--muted);
+}
+.filter-summary .search-chip {
+  gap: 6px;
+}
+.filter-summary .search-chip button {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+}
+.filter-summary .search-chip button:hover {
+  background: rgba(0, 0, 0, 0.1);
+}
 .job-card {
   background: var(--paper);
   border: 1px solid #ddd5d8;
@@ -695,7 +726,8 @@ input:not([type='checkbox']) {
 .auth-panel > h2,
 .profile-editor > h2,
 .reason-panel > h2,
-.detail-panel > h2 {
+.detail-panel > h2,
+.search-panel > h2 {
   font-size: 34px;
   line-height: 1.2;
   letter-spacing: -0.8px;
@@ -704,7 +736,8 @@ input:not([type='checkbox']) {
 .auth-panel > p,
 .editor-lead,
 .reason-panel > p,
-.detail-panel > p {
+.detail-panel > p,
+.search-panel > p {
   font-size: 15px;
   color: var(--muted);
   line-height: 1.7;
@@ -719,6 +752,80 @@ input:not([type='checkbox']) {
 .saved-tabs [data-slot='tabs-trigger'] {
   padding: 9px 16px;
   min-height: 38px;
+}
+.auth-modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 26px;
+  padding: 5px;
+  background: #eee9e3;
+  border-radius: 10px;
+}
+.auth-modes button {
+  min-height: 42px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+}
+.auth-modes button.active {
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 0 1px 4px #30232a12;
+}
+.password-form {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+.password-form input {
+  flex: 1;
+  min-width: 200px;
+  width: auto;
+  margin-top: 0;
+}
+.metiers-list {
+  display: flex;
+  flex-direction: column;
+  margin-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.metiers-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.metiers-list li > span {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.metiers-list strong {
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.metiers-list small {
+  color: var(--muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.metiers-list .icon-button {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
 }
 .app-sheet {
   max-width: 630px !important;

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   ArrowUpRight,
   Compass,
@@ -31,7 +31,7 @@ import {
   type Profile,
   type Reaction,
 } from '@/lib/model';
-import { recommend } from '@/lib/recommendations';
+import { recommend, metierKey } from '@/lib/recommendations';
 import { api, ApiError } from '@/lib/api';
 import { safeExternalUrl } from '@/lib/validation';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -53,7 +53,7 @@ import {
 import { AuthPanel } from './auth-panel';
 import { ProfileEditor } from './profile-editor';
 import { EnginePanel } from './engine-panel';
-type Panel = 'auth' | 'profile' | 'detail' | 'reason' | null;
+type Panel = 'auth' | 'profile' | 'detail' | 'reason' | 'search' | null;
 export default function Discovery() {
   const [tab, setTab] = useState('discover');
   const [panel, setPanel] = useState<Panel>(null);
@@ -100,6 +100,15 @@ export default function Discovery() {
       f.verdict !== 'reject' &&
       (savedFilter === 'all' || f.verdict === savedFilter),
   );
+  const excludedMetiers = useMemo(() => {
+    const byKey = new Map<string, Reaction>();
+    for (const f of feedback) {
+      if (f.verdict !== 'reject' || f.reason !== 'missions') continue;
+      const key = metierKey(f.job);
+      if (key && !byKey.has(key)) byKey.set(key, f);
+    }
+    return [...byKey.values()];
+  }, [feedback]);
   async function loadOffers(
     p: Profile,
     opts: { q?: string; cursor?: number; append?: boolean } = {},
@@ -147,16 +156,16 @@ export default function Discovery() {
   async function runSearch(e: FormEvent) {
     e.preventDefault();
     const q = searchInput.trim();
-    if (q === query) return;
     setQuery(q);
     setSkipped([]);
+    setPanel(null);
     await loadOffers(profile, { q, cursor: 0 });
   }
   function clearSearch() {
     setSearchInput('');
-    if (!query) return;
     setQuery('');
     setSkipped([]);
+    setPanel(null);
     void loadOffers(profile, { q: '', cursor: 0 });
   }
   async function loadAccount() {
@@ -227,6 +236,25 @@ export default function Discovery() {
     await api('profile', 'PUT', p);
     setProfile(p);
     setNotice('Tes réglages du moteur sont enregistrés.');
+  }
+  async function changePassword(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      const data = new FormData(e.currentTarget as HTMLFormElement);
+      await api('auth/password', 'POST', {
+        password: data.get('password'),
+      });
+      resetSession();
+      setNotice(
+        'Ton mot de passe a été changé. Connecte-toi avec ton nouveau mot de passe.',
+      );
+    } catch (cause) {
+      setError((cause as Error).message);
+    } finally {
+      setBusy(false);
+    }
   }
   async function react(
     verdict: Reaction['verdict'],
@@ -308,6 +336,21 @@ export default function Discovery() {
       await api(`feedback?id=${encodeURIComponent(f.job_id)}`, 'DELETE');
       setFeedback((all) => all.filter((x) => x.job_id !== f.job_id));
       setNotice('Offre retirée des favoris. Elle peut à nouveau apparaître.');
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      pending.current = false;
+      setBusy(false);
+    }
+  }
+  async function restoreMetier(f: Reaction) {
+    if (pending.current) return;
+    pending.current = true;
+    setBusy(true);
+    try {
+      await api(`feedback?id=${encodeURIComponent(f.job_id)}`, 'DELETE');
+      setFeedback((all) => all.filter((x) => x.job_id !== f.job_id));
+      setNotice('Ce métier peut à nouveau apparaître.');
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -461,26 +504,6 @@ export default function Discovery() {
               className="discovery-column"
               aria-label="Offres à découvrir"
             >
-              <form className="search-field" onSubmit={runSearch}>
-                <Search size={16} />
-                <input
-                  value={searchInput}
-                  onChange={(event) => setSearchInput(event.target.value)}
-                  placeholder="Métier, mot-clé…"
-                  aria-label="Rechercher par mots-clés"
-                  maxLength={80}
-                />
-                {(searchInput || query) && (
-                  <button
-                    type="button"
-                    className="search-clear"
-                    aria-label="Effacer la recherche"
-                    onClick={clearSearch}
-                  >
-                    <X size={15} />
-                  </button>
-                )}
-              </form>
               <div className="filter-bar">
                 <div className="filter-summary">
                   <button onClick={() => setPanel('profile')}>
@@ -492,7 +515,18 @@ export default function Discovery() {
                       ? profile.contracts.join(' · ')
                       : 'Tous les contrats'}
                   </button>
-                  {query && <span>Recherche : {query}</span>}
+                  {query && (
+                    <span className="filter-chip search-chip">
+                      Recherche : {query}
+                      <button
+                        type="button"
+                        onClick={clearSearch}
+                        aria-label="Effacer la recherche"
+                      >
+                        <X size={12} />
+                      </button>
+                    </span>
+                  )}
                   {profile.noWeekend && <span>Sans week-end</span>}
                   {profile.noNight && <span>Sans nuit</span>}
                   {profile.domain && profile.domainPreference !== 'any' && (
@@ -503,6 +537,13 @@ export default function Discovery() {
                     </span>
                   )}
                 </div>
+                <button
+                  className="icon-button"
+                  onClick={() => setPanel('search')}
+                  aria-label="Rechercher par métier ou mot-clé"
+                >
+                  <Search size={20} />
+                </button>
                 <button
                   className="icon-button"
                   onClick={() => setPanel('profile')}
@@ -894,6 +935,55 @@ export default function Discovery() {
                 />
               </div>
             )}
+            {user && excludedMetiers.length > 0 && (
+              <div className="profile-section">
+                <h2>Métiers écartés</h2>
+                <p>
+                  Tu as rejeté ces métiers pour leurs missions : ils ne
+                  reviendront plus. Touche la croix pour les réautoriser.
+                </p>
+                <ul className="metiers-list">
+                  {excludedMetiers.map((f) => (
+                    <li key={f.job_id}>
+                      <span>
+                        <strong>{f.job.title}</strong>
+                        <small>{f.job.sector}</small>
+                      </span>
+                      <button
+                        type="button"
+                        className="icon-button"
+                        disabled={busy}
+                        onClick={() => restoreMetier(f)}
+                        aria-label={`Réautoriser ${f.job.title}`}
+                      >
+                        <X size={16} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {user && (
+              <div className="profile-section">
+                <h2>Ton mot de passe</h2>
+                <p>Change-le quand tu veux. Tu devras te reconnecter ensuite.</p>
+                <form className="password-form" onSubmit={changePassword}>
+                  <input
+                    name="password"
+                    type="password"
+                    autoComplete="new-password"
+                    minLength={8}
+                    maxLength={128}
+                    required
+                    aria-label="Nouveau mot de passe"
+                    placeholder="Nouveau mot de passe"
+                  />
+                  <button className="primary-button" disabled={busy}>
+                    {busy ? 'Enregistrement…' : 'Changer mon mot de passe'}
+                  </button>
+                </form>
+              </div>
+            )}
             <div className="profile-section">
               <h2>Ta vie privée reste privée.</h2>
               <p>
@@ -965,13 +1055,15 @@ export default function Discovery() {
             <SheetTitle>
               {panel === 'auth'
                 ? 'Mon espace'
-                : panel === 'profile'
-                  ? profile.completed
-                    ? 'Mes envies & mes filtres'
-                    : 'Ton point de départ'
-                  : panel === 'reason'
-                    ? 'Ce qui te freine'
-                    : 'Le détail de cette piste'}
+                : panel === 'search'
+                  ? 'Rechercher'
+                  : panel === 'profile'
+                    ? profile.completed
+                      ? 'Mes envies & mes filtres'
+                      : 'Ton point de départ'
+                    : panel === 'reason'
+                      ? 'Ce qui te freine'
+                      : 'Le détail de cette piste'}
             </SheetTitle>
             <SheetDescription className="sr-only">
               {panel === 'reason'
@@ -985,6 +1077,56 @@ export default function Discovery() {
           <div className="sheet-scroll">
             {panel === 'auth' && (
               <AuthPanel enabled={status.accounts} onSuccess={loadAccount} />
+            )}{' '}
+            {panel === 'search' && (
+              <div className="search-panel">
+                <span className="eyebrow">AFFINER TA RECHERCHE</span>
+                <h2>Un métier, un mot-clé ?</h2>
+                <p>
+                  Restreins les annonces à celles qui correspondent à un métier
+                  ou un thème précis.
+                </p>
+                <form onSubmit={runSearch} className="search-form">
+                  <div className="search-field">
+                    <Search size={16} />
+                    <input
+                      value={searchInput}
+                      onChange={(event) => setSearchInput(event.target.value)}
+                      placeholder="Métier, mot-clé…"
+                      aria-label="Rechercher par métier ou mot-clé"
+                      maxLength={80}
+                      autoFocus
+                    />
+                    {(searchInput || query) && (
+                      <button
+                        type="button"
+                        className="search-clear"
+                        aria-label="Effacer la saisie"
+                        onClick={() => setSearchInput('')}
+                      >
+                        <X size={15} />
+                      </button>
+                    )}
+                  </div>
+                  <button className="primary-button">
+                    {query ? 'Actualiser la recherche' : 'Rechercher'}
+                    <ArrowRight size={17} />
+                  </button>
+                  {query && (
+                    <button
+                      type="button"
+                      className="text-button"
+                      onClick={clearSearch}
+                    >
+                      Effacer la recherche
+                    </button>
+                  )}
+                </form>
+                <p className="form-help">
+                  Cette recherche s’ajoute à tes filtres (zone, contrats,
+                  contraintes).
+                </p>
+              </div>
             )}{' '}
             {panel === 'profile' && user && (
               <ProfileEditor initial={profile} onSave={saveProfile} />

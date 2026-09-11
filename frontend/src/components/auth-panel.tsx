@@ -8,37 +8,29 @@ export function AuthPanel({
   enabled: boolean;
   onSuccess?: () => Promise<void>;
 }) {
-  const [mode, setMode] = useState<'email' | 'password'>('email');
+  const [mode, setMode] = useState<'login' | 'register'>('login');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
   async function submit(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
     setBusy(true);
     setError('');
-    setMessage('');
     const data = new FormData(e.currentTarget);
     try {
-      if (mode === 'email') {
-        const result = await api<{ message?: string }>('auth/start', 'POST', {
-          email: data.get('email'),
-        });
-        setMessage(
-          result.message ||
-            'Vérifie ta boîte e-mail pour continuer. Le lien expire dans une heure.',
-        );
-      } else {
-        await api('auth/login', 'POST', {
-          email: data.get('email'),
-          password: data.get('password'),
-        });
-        if (onSuccess) await onSuccess();
-      }
-    } catch (e) {
-      setError((e as Error).message);
+      await api(mode === 'login' ? 'auth/login' : 'auth/register', 'POST', {
+        email: data.get('email'),
+        password: data.get('password'),
+      });
+      if (onSuccess) await onSuccess();
+    } catch (cause) {
+      setError((cause as Error).message);
     } finally {
       setBusy(false);
     }
+  }
+  function switchMode(next: 'login' | 'register') {
+    setMode(next);
+    setError('');
   }
   return (
     <div className="auth-panel">
@@ -52,76 +44,76 @@ export function AuthPanel({
         </div>
       ) : (
         <>
+          <div
+            className="auth-modes"
+            role="tablist"
+            aria-label="Connexion ou création de compte"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === 'login'}
+              className={mode === 'login' ? 'active' : ''}
+              onClick={() => switchMode('login')}
+            >
+              Me connecter
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === 'register'}
+              className={mode === 'register' ? 'active' : ''}
+              onClick={() => switchMode('register')}
+            >
+              Créer un compte
+            </button>
+          </div>
           <form onSubmit={submit} className="form-stack">
             <label>
-              {mode === 'email'
-                ? 'Ton adresse e-mail'
-                : 'Adresse e-mail ou identifiant'}
+              Ton adresse e-mail
               <input
                 name="email"
-                type={mode === 'email' ? 'email' : 'text'}
-                autoComplete={mode === 'email' ? 'email' : 'username'}
+                type="email"
+                autoComplete="email"
                 required
                 maxLength={254}
-                placeholder={mode === 'email' ? 'toi@exemple.fr' : 'toi@exemple.fr'}
+                placeholder="toi@exemple.fr"
               />
             </label>
-            {mode === 'password' && (
-              <label>
-                Mot de passe
-                <input
-                  name="password"
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                  minLength={1}
-                  maxLength={128}
-                />
-              </label>
-            )}
+            <label>
+              {mode === 'register'
+                ? 'Choisis un mot de passe'
+                : 'Ton mot de passe'}
+              <input
+                name="password"
+                type="password"
+                autoComplete={
+                  mode === 'register' ? 'new-password' : 'current-password'
+                }
+                required
+                minLength={mode === 'register' ? 8 : 1}
+                maxLength={128}
+              />
+            </label>
             {error && (
               <p role="alert" className="error-message">
                 {error}
               </p>
             )}
-            {message && (
-              <p role="status" className="notice">
-                {message}
-              </p>
-            )}
             <button className="primary-button" disabled={busy}>
               {busy
                 ? 'Un instant…'
-                : mode === 'email'
-                  ? 'Recevoir mon lien de connexion'
-                  : 'Me connecter'}
+                : mode === 'login'
+                  ? 'Me connecter'
+                  : 'Créer mon compte'}
               <ArrowRight size={18} />
             </button>
           </form>
           <p className="form-help">
-            {mode === 'email'
-              ? 'Pas de mot de passe à retenir : on t’envoie un lien sécurisé. En créant ton compte, tu prends connaissance de notre '
-              : 'Tu peux aussi te connecter sans mot de passe, avec le lien reçu par e-mail. '}
-            {mode === 'email' && (
-              <a href="/confidentialite" target="_blank" rel="noreferrer">
-                politique de confidentialité
-              </a>
-            )}
-            {mode === 'email' && '.'}
+            {mode === 'register'
+              ? 'Ton compte te permet de garder tes favoris et tes envies sur tous tes appareils.'
+              : 'Retrouve tes favoris et tes envies sur tous tes appareils.'}
           </p>
-          <button
-            type="button"
-            className="text-button"
-            onClick={() => {
-              setMode(mode === 'email' ? 'password' : 'email');
-              setError('');
-              setMessage('');
-            }}
-          >
-            {mode === 'email'
-              ? 'J’ai un mot de passe — me connecter autrement'
-              : 'Pas de mot de passe ? Recevoir un lien'}
-          </button>
         </>
       )}
       <p className="privacy-promise">

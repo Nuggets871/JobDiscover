@@ -727,7 +727,9 @@ input:not([type='checkbox']) {
 .profile-editor > h2,
 .reason-panel > h2,
 .detail-panel > h2,
-.search-panel > h2 {
+.search-panel > h2,
+.engine-page > h2,
+.account-page > h2 {
   font-size: 34px;
   line-height: 1.2;
   letter-spacing: -0.8px;
@@ -737,7 +739,9 @@ input:not([type='checkbox']) {
 .editor-lead,
 .reason-panel > p,
 .detail-panel > p,
-.search-panel > p {
+.search-panel > p,
+.engine-page > p,
+.account-page > p {
   font-size: 15px;
   color: var(--muted);
   line-height: 1.7;
@@ -826,6 +830,85 @@ input:not([type='checkbox']) {
   width: 36px;
   height: 36px;
   flex-shrink: 0;
+}
+.settings-list {
+  display: flex;
+  flex-direction: column;
+  margin-top: 22px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--paper);
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 16px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+}
+.settings-row:last-child {
+  border-bottom: 0;
+}
+.settings-row:hover {
+  background: #f7f4ef;
+}
+.settings-icon {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: #f0ece7;
+  color: #74546a;
+}
+.settings-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.settings-text strong {
+  font-size: 15px;
+}
+.settings-text small {
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.settings-row > svg {
+  color: #a99fa2;
+  flex-shrink: 0;
+}
+.excluded-block,
+.account-block {
+  margin-top: 26px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+}
+.excluded-block h3,
+.account-block h3 {
+  font-size: 17px;
+  margin-bottom: 8px;
+}
+.excluded-block > p,
+.account-block > p {
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.7;
+  margin-bottom: 12px;
+}
+.account-page .private-account {
+  margin-top: 8px;
 }
 .app-sheet {
   max-width: 630px !important;

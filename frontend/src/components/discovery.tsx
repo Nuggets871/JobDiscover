@@ -23,8 +23,6 @@ import {
 } from 'lucide-react';
 import {
   defaultProfile,
-  educationLabels,
-  interests,
   kindLabels,
   rejectionReasons,
   type Job,
@@ -53,7 +51,15 @@ import {
 import { AuthPanel } from './auth-panel';
 import { ProfileEditor } from './profile-editor';
 import { EnginePanel } from './engine-panel';
-type Panel = 'auth' | 'profile' | 'detail' | 'reason' | 'search' | null;
+type Panel =
+  | 'auth'
+  | 'profile'
+  | 'detail'
+  | 'reason'
+  | 'search'
+  | 'engine'
+  | 'account'
+  | null;
 export default function Discovery() {
   const [tab, setTab] = useState('discover');
   const [panel, setPanel] = useState<Panel>(null);
@@ -69,10 +75,9 @@ export default function Discovery() {
   const [skipped, setSkipped] = useState<string[]>([]);
   const [surprise, setSurprise] = useState(false);
   const [detail, setDetail] = useState<Job | null>(null);
-  const [last, setLast] = useState<{
-    reaction: Reaction;
-    previous?: Reaction;
-  } | null>(null);
+  const [history, setHistory] = useState<
+    { reaction: Reaction; previous?: Reaction }[]
+  >([]);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -89,6 +94,7 @@ export default function Discovery() {
   const [deleteError, setDeleteError] = useState('');
   const [deletePassword, setDeletePassword] = useState('');
   const pending = useRef(false);
+  const last = history.length ? history[history.length - 1] : null;
   const cards = recommend(jobs, profile, feedback, {
     surprise,
     skipped,
@@ -179,7 +185,7 @@ export default function Discovery() {
     setFeedback(f);
     setJobs([]);
     setSkipped([]);
-    setLast(null);
+    setHistory([]);
     setQuery('');
     setSearchInput('');
     setNextCursor(null);
@@ -277,12 +283,13 @@ export default function Discovery() {
       };
       await api('feedback', 'POST', { job_id: job.id, verdict, reason });
       setFeedback((f) => [reaction, ...f.filter((x) => x.job_id !== job.id)]);
-      setLast({
-        reaction,
-        previous:
-          !askReason && last?.reaction.job_id === job.id
-            ? last.previous
-            : previous,
+      setHistory((h) => {
+        const top = h[h.length - 1];
+        const sameJob = top?.reaction.job_id === job.id;
+        const previousKept = !askReason && sameJob ? top!.previous : previous;
+        const entry = { reaction, previous: previousKept };
+        const rest = sameJob ? h.slice(0, -1) : h;
+        return [...rest, entry].slice(-50);
       });
       setNotice(
         verdict === 'reject'
@@ -303,24 +310,25 @@ export default function Discovery() {
     }
   }
   async function undo() {
-    if (!last || pending.current) return;
+    const entry = history[history.length - 1];
+    if (!entry || pending.current) return;
     pending.current = true;
     setBusy(true);
     setError('');
     try {
-      if (last.previous) await api('feedback', 'POST', last.previous);
+      if (entry.previous) await api('feedback', 'POST', entry.previous);
       else
         await api(
-          `feedback?id=${encodeURIComponent(last.reaction.job_id)}`,
+          `feedback?id=${encodeURIComponent(entry.reaction.job_id)}`,
           'DELETE',
         );
       setFeedback((f) => [
-        ...(last.previous ? [last.previous] : []),
-        ...f.filter((x) => x.job_id !== last.reaction.job_id),
+        ...(entry.previous ? [entry.previous] : []),
+        ...f.filter((x) => x.job_id !== entry.reaction.job_id),
       ]);
-      setSkipped((s) => s.filter((id) => id !== last.reaction.job_id));
-      setLast(null);
-      setNotice('Ton dernier choix a été annulé.');
+      setSkipped((s) => s.filter((id) => id !== entry.reaction.job_id));
+      setHistory((h) => h.slice(0, -1));
+      setNotice('Action annulée.');
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -396,7 +404,7 @@ export default function Discovery() {
     setJobs([]);
     setFeedback([]);
     setSkipped([]);
-    setLast(null);
+    setHistory([]);
     setPanel(null);
     setTab('discover');
     setNotice('Tu es déconnecté.');
@@ -847,8 +855,8 @@ export default function Discovery() {
         </TabsContent>
         <TabsContent value="profile">
           <div className="simple-page profile-page">
-            <span className="eyebrow">UNE RECHERCHE QUI TE RESSEMBLE</span>
-            <h1>Ce qui compte pour toi.</h1>
+            <span className="eyebrow">MON ESPACE</span>
+            <h1>Ton profil.</h1>
             {!user ? (
               <>
                 <p>
@@ -870,155 +878,62 @@ export default function Discovery() {
                   <ShieldCheck size={17} />
                   Espace privé · {user.email}
                 </p>
-                <div className="profile-section">
-                  <div className="section-heading">
-                    <h2>Mes préférences</h2>
-                    <button
-                      className="text-button"
-                      onClick={() => setPanel('profile')}
-                    >
-                      Modifier <ArrowUpRight size={17} />
-                    </button>
-                  </div>
-                  <p>
-                    {profile.city || 'Commune à compléter'} · {profile.radius}{' '}
-                    km ·{' '}
-                    {profile.contracts.length
-                      ? profile.contracts.join(', ')
-                      : 'Tous les contrats'}
-                  </p>
-                  <p>
-                    {profile.education !== 'unspecified'
-                      ? educationLabels[profile.education]
-                      : 'Niveau d’étude non précisé'}
-                    {profile.domain
-                      ? ` · ${
-                          profile.domainPreference === 'avoid'
-                            ? 'Sans'
-                            : 'Domaine'
-                        } ${profile.domain}`
-                      : ''}
-                  </p>
-                  <div className="choices">
-                    {profile.interests.map((t) => (
-                      <span className="choice selected" key={t}>
-                        {interests[t]}
-                      </span>
-                    ))}
-                    {!profile.interests.length && (
-                      <span>Encore toutes les possibilités.</span>
-                    )}
-                  </div>
+                <div className="settings-list">
+                  <button
+                    className="settings-row"
+                    onClick={() => setPanel('profile')}
+                  >
+                    <span className="settings-icon">
+                      <MapPin size={18} />
+                    </span>
+                    <span className="settings-text">
+                      <strong>Ma recherche</strong>
+                      <small>
+                        {profile.city || 'Commune à compléter'} ·{' '}
+                        {profile.radius} km
+                        {profile.contracts.length
+                          ? ` · ${profile.contracts.length} contrat${profile.contracts.length > 1 ? 's' : ''}`
+                          : ''}
+                        {profile.interests.length
+                          ? ` · ${profile.interests.length} envie${profile.interests.length > 1 ? 's' : ''}`
+                          : ''}
+                      </small>
+                    </span>
+                    <ArrowUpRight size={18} />
+                  </button>
+                  <button
+                    className="settings-row"
+                    onClick={() => setPanel('engine')}
+                  >
+                    <span className="settings-icon">
+                      <SlidersHorizontal size={18} />
+                    </span>
+                    <span className="settings-text">
+                      <strong>Moteur de recommandation</strong>
+                      <small>
+                        {excludedMetiers.length
+                          ? `${excludedMetiers.length} métier${excludedMetiers.length > 1 ? 's' : ''} écarté${excludedMetiers.length > 1 ? 's' : ''}`
+                          : 'Règle l’influence de chaque activité'}
+                      </small>
+                    </span>
+                    <ArrowUpRight size={18} />
+                  </button>
+                  <button
+                    className="settings-row"
+                    onClick={() => setPanel('account')}
+                  >
+                    <span className="settings-icon">
+                      <ShieldCheck size={18} />
+                    </span>
+                    <span className="settings-text">
+                      <strong>Compte & confidentialité</strong>
+                      <small>Mot de passe, données, déconnexion</small>
+                    </span>
+                    <ArrowUpRight size={18} />
+                  </button>
                 </div>
               </>
             )}
-            {user && (
-              <div className="profile-section">
-                <div className="section-heading">
-                  <h2>Ce que pense le moteur</h2>
-                  <button
-                    className="text-button"
-                    onClick={() => setPanel('profile')}
-                  >
-                    Mes envies & mes filtres <ArrowUpRight size={16} />
-                  </button>
-                </div>
-                <p>
-                  Chaque activité pèse entre −3 et +3 dans le classement des
-                  offres. Déplace un curseur pour ajuster, ou remets-le sur
-                  automatique. Tes envies et tes réactions font le reste.
-                </p>
-                <EnginePanel
-                  profile={profile}
-                  feedback={feedback}
-                  onSave={saveWeights}
-                />
-              </div>
-            )}
-            {user && excludedMetiers.length > 0 && (
-              <div className="profile-section">
-                <h2>Métiers écartés</h2>
-                <p>
-                  Tu as rejeté ces métiers pour leurs missions : ils ne
-                  reviendront plus. Touche la croix pour les réautoriser.
-                </p>
-                <ul className="metiers-list">
-                  {excludedMetiers.map((f) => (
-                    <li key={f.job_id}>
-                      <span>
-                        <strong>{f.job.title}</strong>
-                        <small>{f.job.sector}</small>
-                      </span>
-                      <button
-                        type="button"
-                        className="icon-button"
-                        disabled={busy}
-                        onClick={() => restoreMetier(f)}
-                        aria-label={`Réautoriser ${f.job.title}`}
-                      >
-                        <X size={16} />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {user && (
-              <div className="profile-section">
-                <h2>Ton mot de passe</h2>
-                <p>Change-le quand tu veux. Tu devras te reconnecter ensuite.</p>
-                <form className="password-form" onSubmit={changePassword}>
-                  <input
-                    name="password"
-                    type="password"
-                    autoComplete="new-password"
-                    minLength={8}
-                    maxLength={128}
-                    required
-                    aria-label="Nouveau mot de passe"
-                    placeholder="Nouveau mot de passe"
-                  />
-                  <button className="primary-button" disabled={busy}>
-                    {busy ? 'Enregistrement…' : 'Changer mon mot de passe'}
-                  </button>
-                </form>
-              </div>
-            )}
-            <div className="profile-section">
-              <h2>Ta vie privée reste privée.</h2>
-              <p>
-                Tes coordonnées, tes préférences et tes réactions ne sont pas
-                envoyées à DeepSeek. Aucun autre membre ne peut consulter ton
-                profil.
-              </p>
-              <a className="text-button" href="/confidentialite">
-                Comprendre les données conservées <ArrowUpRight size={16} />
-              </a>
-              {user && (
-                <div className="account-actions">
-                  <button onClick={exportData} disabled={busy}>
-                    <Download size={18} />
-                    Exporter mes données
-                  </button>
-                  <button onClick={logout} disabled={busy}>
-                    <LogOut size={18} />
-                    Me déconnecter
-                  </button>
-                  <button
-                    className="danger-link"
-                    onClick={() => {
-                      setDeleteText('');
-                      setDeletePassword('');
-                      setDeleteError('');
-                      setDeleteOpen(true);
-                    }}
-                  >
-                    <Trash2 size={18} />
-                    Supprimer mon compte
-                  </button>
-                </div>
-              )}
-            </div>
           </div>
         </TabsContent>
       </Tabs>
@@ -1057,13 +972,17 @@ export default function Discovery() {
                 ? 'Mon espace'
                 : panel === 'search'
                   ? 'Rechercher'
-                  : panel === 'profile'
-                    ? profile.completed
-                      ? 'Mes envies & mes filtres'
-                      : 'Ton point de départ'
-                    : panel === 'reason'
-                      ? 'Ce qui te freine'
-                      : 'Le détail de cette piste'}
+                  : panel === 'engine'
+                    ? 'Moteur de recommandation'
+                    : panel === 'account'
+                      ? 'Compte & confidentialité'
+                      : panel === 'profile'
+                        ? profile.completed
+                          ? 'Mes envies & mes filtres'
+                          : 'Ton point de départ'
+                        : panel === 'reason'
+                          ? 'Ce qui te freine'
+                          : 'Le détail de cette piste'}
             </SheetTitle>
             <SheetDescription className="sr-only">
               {panel === 'reason'
@@ -1130,6 +1049,110 @@ export default function Discovery() {
             )}{' '}
             {panel === 'profile' && user && (
               <ProfileEditor initial={profile} onSave={saveProfile} />
+            )}{' '}
+            {panel === 'engine' && user && (
+              <div className="engine-page">
+                <span className="eyebrow">TON MOTEUR</span>
+                <h2>Ce que pense le moteur.</h2>
+                <p>
+                  Chaque activité pèse entre −3 et +3 dans le classement des
+                  offres. Déplace un curseur pour ajuster, ou remets-le sur
+                  automatique.
+                </p>
+                <EnginePanel
+                  profile={profile}
+                  feedback={feedback}
+                  onSave={saveWeights}
+                />
+                {excludedMetiers.length > 0 && (
+                  <div className="excluded-block">
+                    <h3>Métiers écartés</h3>
+                    <p>
+                      Rejetés pour leurs missions : ils ne reviendront plus.
+                      Touche la croix pour les réautoriser.
+                    </p>
+                    <ul className="metiers-list">
+                      {excludedMetiers.map((f) => (
+                        <li key={f.job_id}>
+                          <span>
+                            <strong>{f.job.title}</strong>
+                            <small>{f.job.sector}</small>
+                          </span>
+                          <button
+                            type="button"
+                            className="icon-button"
+                            disabled={busy}
+                            onClick={() => restoreMetier(f)}
+                            aria-label={`Réautoriser ${f.job.title}`}
+                          >
+                            <X size={16} />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}{' '}
+            {panel === 'account' && user && (
+              <div className="account-page">
+                <span className="eyebrow">TON COMPTE</span>
+                <h2>Compte & confidentialité.</h2>
+                <p className="private-account">
+                  <ShieldCheck size={17} /> {user.email}
+                </p>
+                <div className="account-block">
+                  <h3>Mot de passe</h3>
+                  <form className="password-form" onSubmit={changePassword}>
+                    <input
+                      name="password"
+                      type="password"
+                      autoComplete="new-password"
+                      minLength={8}
+                      maxLength={128}
+                      required
+                      aria-label="Nouveau mot de passe"
+                      placeholder="Nouveau mot de passe"
+                    />
+                    <button className="primary-button" disabled={busy}>
+                      {busy ? 'Enregistrement…' : 'Changer mon mot de passe'}
+                    </button>
+                  </form>
+                </div>
+                <div className="account-block">
+                  <h3>Confidentialité</h3>
+                  <p>
+                    Tes coordonnées, tes préférences et tes réactions ne sont
+                    pas envoyées à DeepSeek. Aucun autre membre ne peut
+                    consulter ton profil.
+                  </p>
+                  <a className="text-button" href="/confidentialite">
+                    Comprendre les données conservées <ArrowUpRight size={16} />
+                  </a>
+                </div>
+                <div className="account-actions">
+                  <button onClick={exportData} disabled={busy}>
+                    <Download size={18} />
+                    Exporter mes données
+                  </button>
+                  <button onClick={logout} disabled={busy}>
+                    <LogOut size={18} />
+                    Me déconnecter
+                  </button>
+                  <button
+                    className="danger-link"
+                    onClick={() => {
+                      setDeleteText('');
+                      setDeletePassword('');
+                      setDeleteError('');
+                      setDeleteOpen(true);
+                    }}
+                  >
+                    <Trash2 size={18} />
+                    Supprimer mon compte
+                  </button>
+                </div>
+              </div>
             )}{' '}
             {panel === 'reason' && last && (
               <div className="reason-panel">

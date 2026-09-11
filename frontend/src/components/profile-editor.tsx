@@ -726,20 +726,6 @@ export function ProfileEditor({
               ))}
             </div>
           </div>
-          <div className="profile-summary" aria-label="Résumé de tes choix">
-            <span>
-              <strong>{p.city || 'Commune à choisir'}</strong>
-              <small>Zone de recherche</small>
-            </span>
-            <span>
-              <strong>{p.radius} km</strong>
-              <small>Distance maximale</small>
-            </span>
-            <span>
-              <strong>{p.interests.length || 'Libre'}</strong>
-              <small>Envies choisies</small>
-            </span>
-          </div>
         </div>
       </section>
       {error && (

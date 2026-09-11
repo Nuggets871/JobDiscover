@@ -83,6 +83,27 @@ export function validateProfile(value: unknown): Profile {
   )
     throw new AppError(400, 'Contrats invalides.');
   p.contracts = [...new Set(v.contracts)] as string[];
+  const weights: Profile['weights'] = {};
+  if (v.weights !== undefined) {
+    if (
+      typeof v.weights !== 'object' ||
+      v.weights === null ||
+      Array.isArray(v.weights)
+    )
+      throw new AppError(400, 'Réglages invalides.');
+    for (const [key, value] of Object.entries(v.weights)) {
+      if (
+        !(key in interests) ||
+        typeof value !== 'number' ||
+        !Number.isFinite(value) ||
+        value < -3 ||
+        value > 3
+      )
+        throw new AppError(400, 'Réglages invalides.');
+      weights[key as Profile['interests'][number]] = value;
+    }
+  }
+  p.weights = weights;
   for (const k of ['noNight', 'noWeekend', 'training', 'completed'] as const) {
     if (typeof v[k] !== 'boolean') throw new AppError(400, 'Option invalide.');
     p[k] = v[k] as boolean;

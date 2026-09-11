@@ -29,6 +29,7 @@ export type Profile = {
   radius: number;
   interests: Interest[];
   avoid: Interest[];
+  weights: Partial<Record<Interest, number>>;
   contracts: string[];
   noNight: boolean;
   noWeekend: boolean;
@@ -49,6 +50,7 @@ export const defaultProfile: Profile = {
   radius: 30,
   interests: [],
   avoid: [],
+  weights: {},
   contracts: [],
   noNight: false,
   noWeekend: false,

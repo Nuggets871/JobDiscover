@@ -66,10 +66,10 @@ export function learnedWeights(feedback: Reaction[], now = Date.now()) {
       f.verdict === 'like'
         ? 1
         : f.verdict === 'maybe'
-          ? 0.3
+          ? 0.5
           : f.reason === 'missions'
-            ? -0.6
-            : 0;
+            ? -1
+            : -0.15;
     const age = f.created_at
       ? Math.max(0, (now - Date.parse(f.created_at)) / 86400000)
       : 0;
@@ -80,6 +80,25 @@ export function learnedWeights(feedback: Reaction[], now = Date.now()) {
   for (const k of Object.keys(weights) as Interest[])
     weights[k] = Math.max(-3, Math.min(3, weights[k] || 0));
   return weights;
+}
+
+const clamp = (n: number) => Math.max(-3, Math.min(3, n));
+
+export function effectiveWeights(p: Profile, feedback: Reaction[]) {
+  const learned = learnedWeights(feedback);
+  const out: Partial<Record<Interest, number>> = {};
+  for (const tag of Object.keys(interests) as Interest[]) {
+    const manual = p.weights[tag];
+    if (manual !== undefined) {
+      out[tag] = clamp(manual);
+      continue;
+    }
+    const base =
+      (p.interests.includes(tag) ? 3 : 0) +
+      (p.avoid.includes(tag) ? -3 : 0);
+    out[tag] = clamp(base + (learned[tag] || 0));
+  }
+  return out;
 }
 
 const adjacent: Record<Interest, Interest[]> = {
@@ -104,51 +123,45 @@ export function recommend(
     offset?: number;
   } = {},
 ): Recommendation[] {
-  const weights = learnedWeights(feedback, options.now);
+  const weights = effectiveWeights(p, feedback);
+  const active = (Object.keys(weights) as Interest[]).filter(
+    (t) => (weights[t] || 0) >= 0.5,
+  );
   const seen = new Set([
     ...feedback.map((f) => f.job_id),
     ...(options.skipped || []),
   ]);
-  const positive = (Object.keys(weights) as Interest[]).filter(
-    (k) => (weights[k] || 0) > 0.25,
-  );
-  const preferences = [...new Set([...p.interests, ...positive])];
   const candidates = jobs
     .filter((j) => !seen.has(j.id) && eligible(j, p))
     .map((job) => {
-      const direct = job.tags.filter((t) => p.interests.includes(t));
-      const learned = job.tags.filter((t) => positive.includes(t));
-      const near = preferences.find((t) =>
+      const strong = job.tags.filter((t) => (weights[t] || 0) >= 2);
+      const near = active.find((t) =>
         adjacent[t].some((x) => job.tags.includes(x)),
       );
-      const kind: Recommendation['kind'] =
-        direct.length || learned.length
-          ? 'match'
-          : near
-            ? 'neighbor'
-            : 'discovery';
+      const kind: Recommendation['kind'] = strong.length
+        ? 'match'
+        : near
+          ? 'neighbor'
+          : 'discovery';
       let explanation =
         'Une proposition pour explorer ce domaine et découvrir ce qui te plaît.';
-      if (direct.length)
-        explanation = `Tu as choisi « ${interests[direct[0]].toLowerCase()} ». Les missions de cette offre touchent à cette activité.`;
-      else if (learned.length)
-        explanation = `Tes réactions positives font ressortir « ${interests[learned[0]].toLowerCase()} ». Une dimension présente dans cette offre.`;
-      else if (near)
+      if (strong.length) {
+        const t = strong[0];
+        explanation = p.interests.includes(t)
+          ? `Tu as choisi « ${interests[t].toLowerCase()} ». Les missions de cette offre touchent à cette activité.`
+          : `Le moteur met fortement en avant « ${interests[t].toLowerCase()} ». Une dimension présente dans cette offre.`;
+      } else if (near)
         explanation = `Une piste proche de ton intérêt pour « ${interests[near].toLowerCase()} », dans un autre type d’activité.`;
-      else if (preferences.length)
+      else if (active.length)
         explanation =
           'Un métier différent de tes envies actuelles, pour laisser une place à la découverte.';
       const score =
-        direct.length * 3 +
+        job.tags.reduce((n, t) => n + (weights[t] || 0), 0) +
         (p.domainPreference === 'related' &&
         p.domain &&
         matchesDomain(job, p.domain)
           ? 2
-          : 0) +
-        job.tags.reduce(
-          (n, t) => n + (weights[t] || 0) - (p.avoid.includes(t) ? 4 : 0),
-          0,
-        ) -
+          : 0) -
         (job.experienceRequired && !p.training ? 1 : 0);
       return { job, kind, explanation, score };
     })

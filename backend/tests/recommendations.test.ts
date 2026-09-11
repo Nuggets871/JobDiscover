@@ -6,7 +6,12 @@ import {
   type Reaction,
   type Profile,
 } from '../src/model.ts';
-import { eligible, learnedWeights, recommend } from '../src/recommendations.ts';
+import {
+  eligible,
+  learnedWeights,
+  effectiveWeights,
+  recommend,
+} from '../src/recommendations.ts';
 
 const j: Job = {
   id: 'one',
@@ -57,15 +62,15 @@ void test('hard constraints remain enforced during exploration, including unknow
   assert.equal(eligible(j, p), true);
 });
 
-void test('commute, salary and confidence rejection never penalize a profession', () => {
+void test('commute, salary and confidence rejection cool a profession only slightly', () => {
   for (const reason of ['distance', 'salary', 'qualification', 'hours', null]) {
     const r: Reaction = { job_id: j.id, job: j, verdict: 'reject', reason };
-    assert.equal(learnedWeights([r]).accueillir, 0);
+    assert.equal(learnedWeights([r]).accueillir, -0.15);
   }
   assert.ok(
     learnedWeights([
       { job_id: j.id, job: j, verdict: 'reject', reason: 'missions' },
-    ]).accueillir! < 0,
+    ]).accueillir! < -0.5,
   );
 });
 
@@ -77,6 +82,30 @@ void test('feedback is bounded and older choices decay', () => {
       [{ ...r, created_at: '2020-01-01' }],
       Date.parse('2026-01-01'),
     ).accueillir! < 0.1,
+  );
+});
+
+void test('manual weights override declared and learned signals', () => {
+  const declared = {
+    ...defaultProfile,
+    interests: ['accueillir'] as Profile['interests'],
+  };
+  const liked: Reaction = {
+    job_id: j.id,
+    job: j,
+    verdict: 'like',
+    reason: null,
+  };
+  assert.equal(
+    effectiveWeights(declared, [liked]).accueillir,
+    3,
+  );
+  assert.equal(
+    effectiveWeights(
+      { ...declared, weights: { accueillir: -1 } },
+      [liked],
+    ).accueillir,
+    -1,
   );
 });
 

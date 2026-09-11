@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   ArrowUpRight,
   Compass,
@@ -17,6 +17,9 @@ import {
   Download,
   Trash2,
   LoaderCircle,
+  Search,
+  CheckCircle2,
+  AlertCircle,
 } from 'lucide-react';
 import {
   defaultProfile,
@@ -28,7 +31,7 @@ import {
   type Profile,
   type Reaction,
 } from '@/lib/model';
-import { recommend, learnedWeights } from '@/lib/recommendations';
+import { recommend } from '@/lib/recommendations';
 import { api, ApiError } from '@/lib/api';
 import { safeExternalUrl } from '@/lib/validation';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -49,6 +52,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { AuthPanel } from './auth-panel';
 import { ProfileEditor } from './profile-editor';
+import { EnginePanel } from './engine-panel';
 type Panel = 'auth' | 'profile' | 'detail' | 'reason' | null;
 export default function Discovery() {
   const [tab, setTab] = useState('discover');
@@ -76,6 +80,10 @@ export default function Discovery() {
   const [sourceError, setSourceError] = useState('');
   const [partial, setPartial] = useState(false);
   const [savedFilter, setSavedFilter] = useState('all');
+  const [searchInput, setSearchInput] = useState('');
+  const [query, setQuery] = useState('');
+  const [nextCursor, setNextCursor] = useState<number | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteText, setDeleteText] = useState('');
   const [deleteError, setDeleteError] = useState('');
@@ -92,25 +100,64 @@ export default function Discovery() {
       f.verdict !== 'reject' &&
       (savedFilter === 'all' || f.verdict === savedFilter),
   );
-  const learned = useMemo(() => learnedWeights(feedback), [feedback]);
-  async function loadOffers(p: Profile) {
+  async function loadOffers(
+    p: Profile,
+    opts: { q?: string; cursor?: number; append?: boolean } = {},
+  ) {
+    const q = opts.q ?? query;
+    const cursor = opts.cursor ?? 0;
+    const append = opts.append ?? false;
     setSourceError('');
-    setLoading(true);
+    if (append) setLoadingMore(true);
+    else setLoading(true);
     try {
       if (!p.completed) {
         setJobs([]);
+        setNextCursor(null);
         return;
       }
-      const r = await api<{ jobs: Job[]; partial: boolean }>('offers');
-      setJobs(r.jobs);
+      const params = new URLSearchParams();
+      if (q) params.set('q', q);
+      if (cursor) params.set('cursor', String(cursor));
+      const suffix = params.toString();
+      const r = await api<{
+        jobs: Job[];
+        partial: boolean;
+        nextCursor: number | null;
+      }>(`offers${suffix ? `?${suffix}` : ''}`);
+      setJobs((prev) =>
+        append
+          ? [
+              ...prev,
+              ...r.jobs.filter((job) => !prev.some((x) => x.id === job.id)),
+            ]
+          : r.jobs,
+      );
+      setNextCursor(r.nextCursor);
       setPartial(r.partial);
-      setSkipped([]);
+      if (!append) setSkipped([]);
     } catch (e) {
-      setJobs([]);
+      if (!append) setJobs([]);
       setSourceError((e as Error).message);
     } finally {
-      setLoading(false);
+      if (append) setLoadingMore(false);
+      else setLoading(false);
     }
+  }
+  async function runSearch(e: FormEvent) {
+    e.preventDefault();
+    const q = searchInput.trim();
+    if (q === query) return;
+    setQuery(q);
+    setSkipped([]);
+    await loadOffers(profile, { q, cursor: 0 });
+  }
+  function clearSearch() {
+    setSearchInput('');
+    if (!query) return;
+    setQuery('');
+    setSkipped([]);
+    void loadOffers(profile, { q: '', cursor: 0 });
   }
   async function loadAccount() {
     const who = await api<{ email: string }>('me');
@@ -124,6 +171,9 @@ export default function Discovery() {
     setJobs([]);
     setSkipped([]);
     setLast(null);
+    setQuery('');
+    setSearchInput('');
+    setNextCursor(null);
     setPanel(p.completed ? null : 'profile');
     await loadOffers(p);
   }
@@ -155,13 +205,28 @@ export default function Discovery() {
       active = false;
     };
   }, []);
+  useEffect(() => {
+    if (loading || loadingMore || nextCursor === null || cards.length > 0)
+      return;
+    void loadOffers(profile, { q: query, cursor: nextCursor, append: true });
+  }, [cards.length, loading, loadingMore, nextCursor, query]);
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(''), 3200);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
   async function saveProfile(p: Profile) {
     await api('profile', 'PUT', p);
     setProfile(p);
     setPanel(null);
     setSkipped([]);
     setNotice('Tes préférences sont enregistrées.');
-    await loadOffers(p);
+    await loadOffers(p, { q: query, cursor: 0 });
+  }
+  async function saveWeights(p: Profile) {
+    await api('profile', 'PUT', p);
+    setProfile(p);
+    setNotice('Tes réglages du moteur sont enregistrés.');
   }
   async function react(
     verdict: Reaction['verdict'],
@@ -293,6 +358,9 @@ export default function Discovery() {
     setTab('discover');
     setNotice('Tu es déconnecté.');
     setSourceError('');
+    setQuery('');
+    setSearchInput('');
+    setNextCursor(null);
   }
   async function logout() {
     setBusy(true);
@@ -393,6 +461,26 @@ export default function Discovery() {
               className="discovery-column"
               aria-label="Offres à découvrir"
             >
+              <form className="search-field" onSubmit={runSearch}>
+                <Search size={16} />
+                <input
+                  value={searchInput}
+                  onChange={(event) => setSearchInput(event.target.value)}
+                  placeholder="Métier, mot-clé…"
+                  aria-label="Rechercher par mots-clés"
+                  maxLength={80}
+                />
+                {(searchInput || query) && (
+                  <button
+                    type="button"
+                    className="search-clear"
+                    aria-label="Effacer la recherche"
+                    onClick={clearSearch}
+                  >
+                    <X size={15} />
+                  </button>
+                )}
+              </form>
               <div className="filter-bar">
                 <div className="filter-summary">
                   <button onClick={() => setPanel('profile')}>
@@ -404,6 +492,7 @@ export default function Discovery() {
                       ? profile.contracts.join(' · ')
                       : 'Tous les contrats'}
                   </button>
+                  {query && <span>Recherche : {query}</span>}
                   {profile.noWeekend && <span>Sans week-end</span>}
                   {profile.noNight && <span>Sans nuit</span>}
                   {profile.domain && profile.domainPreference !== 'any' && (
@@ -446,19 +535,11 @@ export default function Discovery() {
                     className={`job-card ${current.kind}`}
                     key={current.job.id}
                   >
-                    <div className="card-ribbon">
-                      <span>
-                        <Compass size={16} />
-                        {kindLabels[current.kind].toLocaleUpperCase('fr')}
-                      </span>
-                      <span>
-                        {String(feedback.length + skipped.length + 1).padStart(
-                          2,
-                          '0',
-                        )}
-                      </span>
-                    </div>
                     <div className="job-body">
+                      <span className="card-badge">
+                        <Compass size={13} />
+                        {kindLabels[current.kind]}
+                      </span>
                       <div className="company-line">
                         <span className="company-monogram">
                           {current.job.company
@@ -550,6 +631,11 @@ export default function Discovery() {
                     </div>
                   </article>
                 </>
+              ) : loadingMore ? (
+                <output className="empty-state">
+                  <LoaderCircle className="spin" />
+                  <h3>On charge d’autres offres…</h3>
+                </output>
               ) : (
                 <div className="empty-state">
                   <Compass size={34} />
@@ -565,7 +651,7 @@ export default function Discovery() {
                       ? 'Tes préférences permettent de sélectionner des annonces France Travail qui correspondent à ta recherche.'
                       : !profile.completed
                         ? 'Quelques envies et une commune suffisent pour commencer.'
-                        : 'Aucune autre offre ne correspond ici à tes critères. Tu peux revoir les offres passées ou modifier tes filtres.'}
+                        : 'Aucune autre offre ne correspond ici à tes critères. Tu peux revoir les offres passées, modifier tes filtres ou chercher un mot-clé.'}
                   </p>
                   <button
                     className="primary-button"
@@ -589,9 +675,19 @@ export default function Discovery() {
                   {user && profile.completed && (
                     <button
                       className="text-button"
-                      onClick={() => loadOffers(profile)}
+                      onClick={() =>
+                        nextCursor
+                          ? loadOffers(profile, {
+                              q: query,
+                              cursor: nextCursor,
+                              append: true,
+                            })
+                          : loadOffers(profile, { q: query, cursor: 0 })
+                      }
                     >
-                      Chercher de nouvelles offres
+                      {nextCursor
+                        ? 'Voir la suite des offres'
+                        : 'Relancer la recherche'}
                     </button>
                   )}
                 </div>
@@ -623,8 +719,8 @@ export default function Discovery() {
               </button>
               {partial && (
                 <p className="form-help">
-                  Sélection parmi les 300 offres récentes récupérées dans cette
-                  zone.
+                  D’autres offres existent dans cette zone : elles se chargent
+                  au fil de ta progression.
                 </p>
               )}
             </section>
@@ -775,34 +871,29 @@ export default function Discovery() {
                 </div>
               </>
             )}
-            <div className="profile-section">
-              <h2>Ce que tes choix dessinent</h2>
-              <p>
-                Ces tendances viennent de tes réactions. Elles évoluent et ne
-                remplacent jamais tes préférences.
-              </p>
-              {Object.entries(learned).filter(([, v]) => v > 0.25).length ? (
-                <div className="choices">
-                  {Object.entries(learned)
-                    .filter(([, v]) => v > 0.25)
-                    .map(([key]) => (
-                      <span className="choice" key={key}>
-                        {interests[key as keyof typeof interests]}
-                      </span>
-                    ))}
+            {user && (
+              <div className="profile-section">
+                <div className="section-heading">
+                  <h2>Ce que pense le moteur</h2>
+                  <button
+                    className="text-button"
+                    onClick={() => setPanel('profile')}
+                  >
+                    Mes envies & mes filtres <ArrowUpRight size={16} />
+                  </button>
                 </div>
-              ) : (
-                <p className="form-help">
-                  Encore trop peu de réactions pour dégager une tendance.
+                <p>
+                  Chaque activité pèse entre −3 et +3 dans le classement des
+                  offres. Déplace un curseur pour ajuster, ou remets-le sur
+                  automatique. Tes envies et tes réactions font le reste.
                 </p>
-              )}
-              <button
-                className="text-button"
-                onClick={() => setPanel('profile')}
-              >
-                Corriger mes envies <ArrowUpRight size={16} />
-              </button>
-            </div>
+                <EnginePanel
+                  profile={profile}
+                  feedback={feedback}
+                  onSave={saveWeights}
+                />
+              </div>
+            )}
             <div className="profile-section">
               <h2>Ta vie privée reste privée.</h2>
               <p>
@@ -843,9 +934,10 @@ export default function Discovery() {
       </Tabs>
       {(error || notice) && (
         <div
-          className={`feedback-notice ${error ? 'is-error' : ''}`}
+          className={`feedback-notice ${error ? 'is-error' : 'is-notice'}`}
           role={error ? 'alert' : 'status'}
         >
+          {error ? <AlertCircle size={16} /> : <CheckCircle2 size={16} />}
           <span>{error || notice}</span>
           <button
             aria-label="Fermer le message"
@@ -854,7 +946,7 @@ export default function Discovery() {
               setNotice('');
             }}
           >
-            <X size={17} />
+            <X size={15} />
           </button>
         </div>
       )}

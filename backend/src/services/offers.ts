@@ -6,9 +6,17 @@ import { remote } from './http.ts';
 import { limit } from './rate-limit.ts';
 import { MemoryCache } from './memory-cache.ts';
 
+const PAGE_SIZE = 100;
+const MAX_START = 3000;
+
 let tokenCache: { token: string; expires: number } | null = null;
-type SearchResult = { jobs: Job[]; partial: boolean; fetchedAt: string };
-const searchMemory = new MemoryCache<SearchResult>(15 * 60_000, 100);
+type SearchResult = {
+  jobs: Job[];
+  nextCursor: number | null;
+  partial: boolean;
+  fetchedAt: string;
+};
+const searchMemory = new MemoryCache<SearchResult>(15 * 60_000, 300);
 const detailMemory = new MemoryCache<Job>(5 * 60_000, 500);
 
 async function token() {
@@ -60,17 +68,65 @@ async function ft(path: string) {
   return r;
 }
 
-export async function searchOffers(p: Profile): Promise<SearchResult> {
+const contractCodes: Record<string, string[]> = {
+  CDI: ['CDI'],
+  CDD: ['CDD'],
+  MIS: ['MIS'],
+  SAI: ['SAI'],
+};
+
+function searchParams(p: Profile, q: string, cursor: number) {
+  const params = new URLSearchParams({
+    commune: p.commune,
+    distance: String(p.radius),
+    range: `${cursor}-${cursor + PAGE_SIZE - 1}`,
+    sort: q ? '0' : '1',
+  });
+  const alternance = p.contracts.includes('alternance');
+  const others = p.contracts.filter((c) => c !== 'alternance');
+  if (alternance && !others.length) params.set('natureContrat', 'E1,E2');
+  else if (!alternance && others.length)
+    params.set(
+      'typeContrat',
+      others.flatMap((c) => contractCodes[c] || []).join(','),
+    );
+  if (p.experience === 'beginner') params.set('experienceExigence', 'D');
+  if (q) params.set('motsCles', q);
+  return params;
+}
+
+function cacheKey(p: Profile, q: string, cursor: number) {
+  const contracts = [...p.contracts].sort().join(',');
+  return `${p.commune}:${p.radius}:${contracts}:${p.experience}:${q.toLowerCase()}:${cursor}`;
+}
+
+export async function searchOffers(
+  p: Profile,
+  options: { q?: string; cursor?: number } = {},
+): Promise<SearchResult> {
   if (!p.commune)
     throw new AppError(
       400,
       'Complète ta commune dans ton profil pour voir les offres.',
     );
-  const key = `${p.commune}:${p.radius}`;
-  return searchMemory.getOrLoad(key, () => loadOffers(p, key));
+  const raw = (options.q || '').trim().slice(0, 100);
+  const q = raw.length >= 2 ? raw : '';
+  const cursor =
+    Number.isInteger(options.cursor) &&
+    (options.cursor as number) >= 0 &&
+    (options.cursor as number) <= MAX_START
+      ? (options.cursor as number)
+      : 0;
+  const key = cacheKey(p, q, cursor);
+  return searchMemory.getOrLoad(key, () => loadOffers(p, q, cursor, key));
 }
 
-async function loadOffers(p: Profile, key: string): Promise<SearchResult> {
+async function loadOffers(
+  p: Profile,
+  q: string,
+  cursor: number,
+  key: string,
+): Promise<SearchResult> {
   const { rows: entries } = await query<{
     jobs: Job[];
     fetched_at: string;
@@ -80,32 +136,25 @@ async function loadOffers(p: Profile, key: string): Promise<SearchResult> {
     return {
       jobs: entries[0].jobs,
       partial: entries[0].partial,
+      nextCursor: entries[0].partial ? cursor + PAGE_SIZE : null,
       fetchedAt: entries[0].fetched_at,
     };
   await limit('ft-global-search', 200, 3600);
-  const all: Job[] = [];
-  let partial = false;
-  for (let page = 0; page < 3; page++) {
-    const q = new URLSearchParams({
-      commune: p.commune,
-      distance: String(p.radius),
-      range: `${page * 100}-${page * 100 + 99}`,
-      sort: '1',
-    });
-    const r = await ft(`offres/search?${q}`);
-    if (r.status === 204 || r.status === 416) break;
-    if (!r.ok)
-      throw new AppError(
-        r.status === 429 ? 429 : 503,
-        'Les offres ne sont pas disponibles pour le moment. Réessaie dans quelques minutes.',
-      );
+  const r = await ft(`offres/search?${searchParams(p, q, cursor)}`);
+  if (r.status !== 204 && r.status !== 416 && !r.ok)
+    throw new AppError(
+      r.status === 429 ? 429 : 503,
+      'Les offres ne sont pas disponibles pour le moment. Réessaie dans quelques minutes.',
+    );
+  let rows: Record<string, unknown>[] = [];
+  if (r.status !== 204 && r.status !== 416) {
     const data = (await r.json()) as { resultats?: Record<string, unknown>[] };
-    const rows = data.resultats || [];
-    all.push(...rows.map(normalizeJob).filter((j): j is Job => j !== null));
-    if (rows.length < 100) break;
-    if (page === 2) partial = true;
+    rows = data.resultats || [];
   }
-  const jobs = deduplicate(all);
+  const jobs = deduplicate(
+    rows.map(normalizeJob).filter((j): j is Job => j !== null),
+  );
+  const partial = r.status === 206 && cursor + PAGE_SIZE <= MAX_START;
   const fetchedAt = new Date().toISOString();
   if (jobs.length) {
     const cacheRows = JSON.stringify(
@@ -123,7 +172,12 @@ async function loadOffers(p: Profile, key: string): Promise<SearchResult> {
     on conflict(key) do update set jobs=excluded.jobs,fetched_at=excluded.fetched_at,partial=excluded.partial`,
     [key, JSON.stringify(jobs), fetchedAt, partial],
   );
-  return { jobs, partial, fetchedAt };
+  return {
+    jobs,
+    partial,
+    nextCursor: partial ? cursor + PAGE_SIZE : null,
+    fetchedAt,
+  };
 }
 
 export async function cachedJob(id: string): Promise<Job> {

@@ -1,17 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  ArrowLeft,
   ArrowRight,
   Check,
-  Heart,
   LocateFixed,
   LoaderCircle,
   MapPin,
   Sparkles,
-  X,
 } from 'lucide-react';
 import {
-  activityExamples,
   domainPreferenceLabels,
   educationLabels,
   interests,
@@ -23,7 +19,6 @@ import {
 } from '@/lib/model';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Slider } from '@/components/ui/slider';
-import { Progress } from '@/components/ui/progress';
 import { api } from '@/lib/api';
 type Commune = {
   nom: string;
@@ -41,7 +36,6 @@ export function ProfileEditor({
   onSave: (p: Profile) => Promise<void>;
 }) {
   const [p, setP] = useState<Profile>(initial);
-  const [step, setStep] = useState(initial.completed ? 1 : 0);
   const [postal, setPostal] = useState('');
   const [cities, setCities] = useState<Commune[]>([]);
   const [cityTotal, setCityTotal] = useState(0);
@@ -53,9 +47,9 @@ export function ProfileEditor({
   const [desireAnalyzing, setDesireAnalyzing] = useState(false);
   const [desireError, setDesireError] = useState('');
   const [desireResult, setDesireResult] = useState<DesireAnalysis | null>(null);
-  const [activityQuery, setActivityQuery] = useState('');
   const requestId = useRef(0);
   const skipPostalLookup = useRef(false);
+  const zoneRef = useRef<HTMLElement>(null);
   function toggle(key: 'interests' | 'avoid', value: Interest) {
     setP((prev) => ({
       ...prev,
@@ -162,6 +156,15 @@ export function ProfileEditor({
   }
   async function save(completed: boolean) {
     setError('');
+    if (completed && !p.commune) {
+      setError(
+        cities.length > 1
+          ? 'Choisis l’une des communes proposées pour continuer.'
+          : 'Indique ton code postal ou utilise ta position pour choisir une commune.',
+      );
+      zoneRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
     setBusy(true);
     try {
       await onSave({ ...p, completed });
@@ -171,24 +174,6 @@ export function ProfileEditor({
       setBusy(false);
     }
   }
-  function zoneMissing() {
-    if (step === 0 && !p.commune) {
-      setError(
-        cities.length > 1
-          ? 'Choisis l’une des communes proposées pour continuer.'
-          : 'Indique ton code postal ou utilise ta position pour choisir une commune.',
-      );
-      return true;
-    }
-    return false;
-  }
-  const filteredActivities = activityExamples.filter(
-    (a) =>
-      !activityQuery.trim() ||
-      `${a.label} ${a.hint}`
-        .toLowerCase()
-        .includes(activityQuery.trim().toLowerCase()),
-  );
   async function analyzeDesire() {
     setDesireError('');
     setDesireAnalyzing(true);
@@ -202,33 +187,16 @@ export function ProfileEditor({
   }
   return (
     <div className="profile-editor">
-      <div className="step-meta">
-        <span className="eyebrow">TON PROFIL · {step + 1} / 3</span>
-        <span>Quelques minutes, à ton rythme</span>
-      </div>
-      <Progress
-        aria-label="Progression du questionnaire"
-        value={((step + 1) / 3) * 100}
-      />
-      <h2>
-        {
-          [
-            'D’abord, ton quotidien.',
-            'Qu’est-ce qui te donne envie ?',
-            'Ce qui compte vraiment.',
-          ][step]
-        }
-      </h2>
+      <h2>Tes préférences, d’un coup d’œil.</h2>
       <p className="editor-lead">
-        {
-          [
-            'On cherche autour de toi. Pas besoin de ton adresse précise.',
-            'Pas besoin de choisir un métier. Pars de ce que tu aimes faire.',
-            'Sépare tes envies des contraintes qui ne peuvent pas changer.',
-          ][step]
-        }
+        La zone, tes envies et tes contraintes se règlent ici. Rien n’est
+        définitif.
       </p>
-      {step === 0 && (
+      <section className="editor-section" ref={zoneRef}>
+        <div className="editor-section-head">
+          <span className="eyebrow">TA ZONE</span>
+          <h3>Où chercher ?</h3>
+        </div>
         <div className="form-stack">
           <label>
             Ton code postal
@@ -403,8 +371,12 @@ export function ProfileEditor({
             </div>
           </div>
         </div>
-      )}
-      {step === 1 && (
+      </section>
+      <section className="editor-section">
+        <div className="editor-section-head">
+          <span className="eyebrow">TES ENVIES</span>
+          <h3>Ce qui te donne envie</h3>
+        </div>
         <div className="form-stack">
           <div className="field-title-row">
             <span className="field-title">J’aimerais…</span>
@@ -621,67 +593,13 @@ export function ProfileEditor({
               </div>
             )}
           </div>
-          <div className="activities-section">
-            <div className="field-title-row">
-              <span className="field-title">Explorer des exemples</span>
-              <small>{filteredActivities.length} activités</small>
-            </div>
-            <p className="form-help">
-              Parcours des activités concrètes et marque celles qui te plaisent
-              ou celles à éviter.
-            </p>
-            <input
-              className="activities-search"
-              value={activityQuery}
-              onChange={(event) => setActivityQuery(event.target.value)}
-              placeholder="Rechercher une activité…"
-              aria-label="Rechercher une activité"
-            />
-            <div className="activity-list">
-              {filteredActivities.map((activity) => {
-                const liked = p.interests.includes(activity.tag);
-                const avoided = p.avoid.includes(activity.tag);
-                return (
-                  <div className="activity-item" key={activity.label}>
-                    <span className="activity-info">
-                      <strong>{activity.label}</strong>
-                      <small>{activity.hint}</small>
-                    </span>
-                    <button
-                      type="button"
-                      className={liked ? 'activity-like active' : 'activity-like'}
-                      aria-pressed={liked}
-                      aria-label={`J’aimerais ${activity.label}`}
-                      title="J’aimerais faire ça"
-                      onClick={() => toggle('interests', activity.tag)}
-                    >
-                      <Heart size={16} />
-                    </button>
-                    <button
-                      type="button"
-                      className={
-                        avoided ? 'activity-avoid active' : 'activity-avoid'
-                      }
-                      aria-pressed={avoided}
-                      aria-label={`Éviter ${activity.label}`}
-                      title="Je veux éviter ça"
-                      onClick={() => toggle('avoid', activity.tag)}
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-                );
-              })}
-              {filteredActivities.length === 0 && (
-                <p className="form-help">
-                  Aucune activité ne correspond à ta recherche.
-                </p>
-              )}
-            </div>
-          </div>
         </div>
-      )}
-      {step === 2 && (
+      </section>
+      <section className="editor-section">
+        <div className="editor-section-head">
+          <span className="eyebrow">TES CONTRAINTES</span>
+          <h3>Ce qui compte vraiment</h3>
+        </div>
         <div className="form-stack">
           <div className="field-title-row">
             <span className="field-title">Mes contraintes indispensables</span>
@@ -823,97 +741,35 @@ export function ProfileEditor({
             </span>
           </div>
         </div>
-      )}
+      </section>
       {error && (
         <p className="error-message" role="alert">
           {error}
         </p>
       )}
       <div className="editor-actions">
-        {step > 0 ? (
+        <button
+          className="primary-button"
+          disabled={busy || searching || locating}
+          onClick={() => save(true)}
+        >
+          {busy
+            ? 'Enregistrement…'
+            : initial.completed
+              ? 'Enregistrer mes préférences'
+              : 'Trouver mes pistes'}
+          <ArrowRight size={17} />
+        </button>
+        {!initial.completed && (
           <button
-            className="secondary-button"
+            className="text-button"
             disabled={busy}
-            onClick={() => setStep(step - 1)}
+            onClick={() => save(false)}
           >
-            <ArrowLeft size={17} />
-            Retour
+            Enregistrer et reprendre plus tard
           </button>
-        ) : (
-          <span />
         )}
-        <div className="editor-actions-right">
-          {step === 0 && !initial.completed ? (
-            <>
-              <button
-                className="primary-button"
-                disabled={busy || searching || locating}
-                onClick={() => {
-                  if (zoneMissing()) return;
-                  setError('');
-                  save(true);
-                }}
-              >
-                {busy ? 'Enregistrement…' : 'Découvrir mes pistes'}
-                <ArrowRight size={17} />
-              </button>
-              <button
-                className="secondary-button"
-                disabled={busy || searching || locating}
-                onClick={() => {
-                  if (zoneMissing()) return;
-                  setError('');
-                  setStep(1);
-                }}
-              >
-                Je précise mes envies <ArrowRight size={17} />
-              </button>
-            </>
-          ) : step === 2 ? (
-            <button
-              className="primary-button"
-              disabled={busy}
-              onClick={() => save(true)}
-            >
-              {busy ? 'Enregistrement…' : 'Trouver mes pistes'}
-              <ArrowRight size={17} />
-            </button>
-          ) : (
-            <>
-              <button
-                className="primary-button"
-                disabled={busy || searching || locating}
-                onClick={() => {
-                  if (zoneMissing()) return;
-                  setError('');
-                  setStep(step + 1);
-                }}
-              >
-                Continuer
-                <ArrowRight size={17} />
-              </button>
-              {!initial.completed && step === 1 && (
-                <button
-                  className="secondary-button"
-                  disabled={busy}
-                  onClick={() => save(true)}
-                >
-                  Découvrir d’abord <ArrowRight size={17} />
-                </button>
-              )}
-            </>
-          )}
-        </div>
       </div>
-      <button
-        className="text-button"
-        disabled={busy}
-        onClick={() => save(initial.completed)}
-      >
-        {initial.completed
-          ? 'Enregistrer mes préférences'
-          : 'Enregistrer et reprendre plus tard'}
-      </button>
     </div>
   );
 }

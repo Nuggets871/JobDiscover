@@ -17,13 +17,17 @@ offersRouter.get(
   h(async (req, res) => {
     const user = (req as typeof req & { user: AuthUser }).user;
     await limit(`user:${user.id}`, 120, 60);
-    await limit(`search:${user.id}`, 12, 600);
+    await limit(`search:${user.id}`, 40, 600);
     const { rows } = await query<{ preferences: unknown }>(
       'select preferences from profiles where user_id=$1',
       [user.id],
     );
     const p = validateProfile(rows[0]?.preferences || defaultProfile);
-    res.json(await searchOffers(p));
+    const q =
+      typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 80) : '';
+    const raw = Number(req.query.cursor ?? 0);
+    const cursor = Number.isInteger(raw) && raw >= 0 && raw <= 3000 ? raw : 0;
+    res.json(await searchOffers(p, { q, cursor }));
   }),
 );
 
